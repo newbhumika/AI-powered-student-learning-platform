@@ -1,0 +1,6 @@
+{
+  "name": "AI-Powered Student Learning Assistant",
+  "description": "Intelligent academic learning platform with an AI study tutor, topic explainer, interactive quiz generator, study notes builder with PDF export, real-time progress analytics, and secure admin portal.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
