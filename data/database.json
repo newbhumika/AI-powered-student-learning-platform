@@ -1,0 +1,167 @@
+{
+  "profiles": [
+    {
+      "id": "95ca4b69-6767-4885-84ab-52d798e9519e",
+      "email": "hksshukla166@gmail.com",
+      "passwordHash": "31b7ecdcd91924ab1b4a354f80e6c4e8:b3dbffbe9578adbfe293317ba684f1fcb9bd1c3972ae61f15c2be58cde529021ee216b898df7b4f92391f4f1866cd5037100e26e61544b33c7c618ee2511dd88",
+      "fullName": "Platform Administrator",
+      "avatarUrl": "",
+      "academicLevel": "Faculty / Administration",
+      "preferredSubjects": [],
+      "role": "admin",
+      "isActive": true,
+      "createdAt": "2026-11-01T18:37:52.870Z",
+      "updatedAt": "2026-11-01T18:38:10.721Z"
+    }
+  ],
+  "subjects": [
+    {
+      "id": "subj-dsa",
+      "name": "Data Structures & Algorithms",
+      "code": "CS301",
+      "description": "Trees, graphs, dynamic programming, asymptotic complexity, and hashing.",
+      "semester": "3rd - 5th Semester",
+      "createdAt": "2026-11-01T18:37:52.795Z"
+    },
+    {
+      "id": "subj-os",
+      "name": "Operating Systems",
+      "code": "CS501",
+      "description": "Process scheduling, concurrency, deadlocks, virtual memory, and file systems.",
+      "semester": "5th Semester",
+      "createdAt": "2026-11-01T18:37:52.795Z"
+    },
+    {
+      "id": "subj-dbms",
+      "name": "Database Management Systems",
+      "code": "CS502",
+      "description": "Relational algebra, SQL normalization, ACID transactions, indexing, and concurrency.",
+      "semester": "5th Semester",
+      "createdAt": "2026-11-01T18:37:52.795Z"
+    },
+    {
+      "id": "subj-cn",
+      "name": "Computer Networks",
+      "code": "CS503",
+      "description": "OSI & TCP/IP layers, routing algorithms, congestion control, and network security.",
+      "semester": "5th Semester",
+      "createdAt": "2026-11-01T18:37:52.795Z"
+    },
+    {
+      "id": "subj-toc",
+      "name": "Theory of Computation",
+      "code": "CS504",
+      "description": "Finite automata, regular expressions, context-free grammars, and Turing machines.",
+      "semester": "5th Semester",
+      "createdAt": "2026-11-01T18:37:52.795Z"
+    },
+    {
+      "id": "subj-ai",
+      "name": "Artificial Intelligence & ML",
+      "code": "CS505",
+      "description": "Search heuristics, knowledge representation, supervised learning, and neural networks.",
+      "semester": "5th - 6th Semester",
+      "createdAt": "2026-11-01T18:37:52.795Z"
+    }
+  ],
+  "topics": [
+    {
+      "id": "top-1",
+      "subjectId": "subj-dsa",
+      "title": "AVL Trees and Red-Black Tree Rotations",
+      "difficulty": "Medium",
+      "description": "Self-balancing binary search trees and O(log n) rebalancing operations.",
+      "createdAt": "2026-11-01T18:37:52.795Z"
+    },
+    {
+      "id": "top-2",
+      "subjectId": "subj-dsa",
+      "title": "Dynamic Programming: Optimal Substructure & Memoization",
+      "difficulty": "Hard",
+      "description": "Knapsack, Longest Common Subsequence, and state transition design.",
+      "createdAt": "2026-11-01T18:37:52.795Z"
+    },
+    {
+      "id": "top-3",
+      "subjectId": "subj-os",
+      "title": "Deadlock Avoidance & Banker's Algorithm",
+      "difficulty": "Medium",
+      "description": "Safe state verification, resource allocation graphs, and recovery.",
+      "createdAt": "2026-11-01T18:37:52.795Z"
+    },
+    {
+      "id": "top-4",
+      "subjectId": "subj-os",
+      "title": "Paging, TLB, and Virtual Memory Page Replacement",
+      "difficulty": "Medium",
+      "description": "FIFO, Optimal, and LRU page replacement policies and thrashing.",
+      "createdAt": "2026-11-01T18:37:52.795Z"
+    },
+    {
+      "id": "top-5",
+      "subjectId": "subj-dbms",
+      "title": "Database Normalization (1NF, 2NF, 3NF, BCNF)",
+      "difficulty": "Medium",
+      "description": "Functional dependencies, lossless-join decomposition, and anomaly elimination.",
+      "createdAt": "2026-11-01T18:37:52.795Z"
+    },
+    {
+      "id": "top-6",
+      "subjectId": "subj-cn",
+      "title": "TCP Three-Way Handshake & Congestion Control",
+      "difficulty": "Medium",
+      "description": "Slow start, congestion avoidance, fast retransmit, and sliding window.",
+      "createdAt": "2026-11-01T18:37:52.795Z"
+    },
+    {
+      "id": "top-7",
+      "subjectId": "subj-toc",
+      "title": "Deterministic vs Non-Deterministic Finite Automata",
+      "difficulty": "Easy",
+      "description": "Subset construction, epsilon closures, and DFA minimization.",
+      "createdAt": "2026-11-01T18:37:52.795Z"
+    },
+    {
+      "id": "top-8",
+      "subjectId": "subj-ai",
+      "title": "A* Search Algorithm & Admissible Heuristics",
+      "difficulty": "Medium",
+      "description": "Informed graph search, optimality conditions, and heuristic consistency.",
+      "createdAt": "2026-11-01T18:37:52.795Z"
+    }
+  ],
+  "chat_conversations": [],
+  "chat_messages": [],
+  "saved_notes": [],
+  "quizzes": [],
+  "quiz_questions": [],
+  "quiz_attempts": [],
+  "quiz_answers": [],
+  "user_activity": [],
+  "platform_settings": [
+    {
+      "key": "institution_name",
+      "value": "Department of Computer Science & Engineering",
+      "description": "Academic institution or department displayed across reports and handouts.",
+      "updatedAt": "2026-11-01T18:37:52.795Z"
+    },
+    {
+      "key": "allow_student_registration",
+      "value": "true",
+      "description": "Allow new students to self-register on the platform (true/false).",
+      "updatedAt": "2026-11-01T18:37:52.795Z"
+    },
+    {
+      "key": "ai_rate_limit_per_minute",
+      "value": "20",
+      "description": "Maximum AI generation requests allowed per user per minute.",
+      "updatedAt": "2026-11-01T18:37:52.795Z"
+    },
+    {
+      "key": "default_quiz_seconds_per_question",
+      "value": "60",
+      "description": "Default countdown timer allocation (in seconds) per MCQ question.",
+      "updatedAt": "2026-11-01T18:37:52.795Z"
+    }
+  ]
+}

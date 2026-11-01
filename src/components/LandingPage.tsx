@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.tsx';
+import { ProjectReportModal } from './ProjectReportModal.tsx';
 import heroWorkspaceImg from '../assets/images/hero_student_workspace_1793520277416.jpg';
 import featureArchImg from '../assets/images/feature_concept_architecture_1793520278487.jpg';
 
@@ -31,6 +32,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   const [heroImgFailed, setHeroImgFailed] = useState(false);
   const [featureImgFailed, setFeatureImgFailed] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-[#F6F8FA] text-slate-900 dark:bg-[#0A1013] dark:text-slate-100 flex flex-col">
@@ -658,6 +660,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             </button>
             <button
               type="button"
+              onClick={() => setReportOpen(true)}
+              className="hover:text-teal-700 dark:hover:text-teal-400 transition-colors cursor-pointer"
+            >
+              VT Project Report
+            </button>
+            <button
+              type="button"
               onClick={() => onNavigateAuth('login')}
               className="hover:text-teal-700 dark:hover:text-teal-400 transition-colors cursor-pointer"
             >
@@ -673,6 +682,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </div>
         </div>
       </footer>
+
+      <ProjectReportModal
+        isOpen={reportOpen}
+        onClose={() => setReportOpen(false)}
+        institutionName={publicInfo.institutionName}
+      />
     </div>
   );
 };

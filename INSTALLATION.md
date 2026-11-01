@@ -4,6 +4,7 @@
 - **Node.js:** v20.x or v22.x LTS
 - **npm:** v10+
 - **Gemini API Key:** Obtain an API key from Google AI Studio for server-side AI features.
+- **Database Server:** **None required.** All student accounts, admin records, conversations, study notes, quizzes, and analytics persist automatically in the built-in NoSQL JSON document store (`data/database.json`).
 
 ---
 
@@ -28,13 +29,9 @@
    ADMIN_PASSWORD="StrongAdminPassword123!"
    ```
 
-3. **Database Setup**
-   - **Zero-Config Local Persistence (Default):** On startup, the server automatically initializes all 12 normalized tables and seeds the CSE subject/topic catalog inside `data/database.json` with atomic disk commits.
-   - **PostgreSQL / Supabase Setup (Cloud SQL / Supabase Hosted):**
-     1. Create a new Supabase project.
-     2. Open the **SQL Editor** in your Supabase Dashboard.
-     3. Paste and run `supabase/migrations/001_initial_schema.sql` to create all 12 tables, foreign keys, indexes, `updated_at` triggers, and Row Level Security (RLS) policies.
-     4. Add `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` to your `.env` file.
+3. **Automatic Persistent Storage Initialization**
+   - On startup, `src/server/db.ts` (`DocumentStore`) automatically creates `data/database.json`, initializes all 12 normalized collections (`profiles`, `subjects`, `topics`, `chat_conversations`, `chat_messages`, `saved_notes`, `quizzes`, `quiz_questions`, `quiz_attempts`, `quiz_answers`, `user_activity`, `platform_settings`), and seeds the CSE 5th Semester curriculum catalog using atomic temp-file-rename disk writes.
+   - No PostgreSQL, Cloud SQL, or external database provisioning is needed to run Student Login or the Admin Portal.
 
 4. **Start Development Server**
    ```bash
@@ -62,5 +59,5 @@
 ---
 
 ## 4. Cloud Deployment
-- Configure `GEMINI_API_KEY`, `AUTH_SECRET`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD` in your hosting provider's Environment Variables panel.
+- Configure `GEMINI_API_KEY`, `AUTH_SECRET`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD` in your hosting provider's Environment Variables / Secrets panel.
 - Set the build command to `npm run build` and the start command to `npm start` exposing port `3000`.

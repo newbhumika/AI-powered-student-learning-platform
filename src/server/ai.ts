@@ -16,26 +16,41 @@ export class AIConfigError extends Error {
   }
 }
 
+function resolveGeminiApiKey(): string | undefined {
+  const candidates = [
+    process.env.GEMINI_API_KEY,
+    process.env.GOOGLE_API_KEY,
+    process.env.VITE_GEMINI_API_KEY,
+  ];
+  for (const raw of candidates) {
+    const trimmed = raw?.trim();
+    if (
+      trimmed &&
+      trimmed !== 'MY_GEMINI_API_KEY' &&
+      trimmed !== 'YOUR_GEMINI_API_KEY' &&
+      trimmed.length > 10
+    ) {
+      return trimmed;
+    }
+  }
+  return undefined;
+}
+
 export function isAiConfigured(): boolean {
-  const key = process.env.GEMINI_API_KEY?.trim();
-  return Boolean(
-    key &&
-      key !== 'MY_GEMINI_API_KEY' &&
-      key !== 'YOUR_GEMINI_API_KEY' &&
-      key.length > 10
-  );
+  return Boolean(resolveGeminiApiKey());
 }
 
 function getGenAIClient(): GoogleGenAI {
-  if (!isAiConfigured()) {
+  const apiKey = resolveGeminiApiKey();
+  if (!apiKey) {
     throw new AIConfigError(
-      'AI backend is awaiting server configuration. Please ensure GEMINI_API_KEY is configured in the server environment or AI Studio Secrets panel.',
+      'AI backend is awaiting server configuration. Add GEMINI_API_KEY in Vercel Project Settings -> Environment Variables (or server .env / AI Studio Secrets) and redeploy.',
       503
     );
   }
 
   return new GoogleGenAI({
-    apiKey: process.env.GEMINI_API_KEY,
+    apiKey,
     httpOptions: {
       headers: {
         'User-Agent': 'aistudio-build',

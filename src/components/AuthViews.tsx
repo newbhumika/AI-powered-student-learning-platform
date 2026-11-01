@@ -409,8 +409,8 @@ export const AuthViews: React.FC<AuthViewsProps> = ({
                 <span>Sign In to Student Dashboard</span>
               </button>
 
-              {publicInfo.sandboxQuickAccess !== false && (
-                <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2.5">
+              <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2.5">
+                {publicInfo.studentSandboxAccess !== false && (
                   <button
                     type="button"
                     disabled={submitting}
@@ -420,6 +420,8 @@ export const AuthViews: React.FC<AuthViewsProps> = ({
                     <Zap className="w-3.5 h-3.5" />
                     <span>Instant Demo Student Login (Aarav Sharma · CSE 5th Sem)</span>
                   </button>
+                )}
+                {publicInfo.allowRegistration && (
                   <p className="text-center text-xs text-slate-500 dark:text-slate-400">
                     New here?{' '}
                     <button
@@ -433,8 +435,8 @@ export const AuthViews: React.FC<AuthViewsProps> = ({
                       Create your own Student Account
                     </button>
                   </p>
-                </div>
-              )}
+                )}
+              </div>
             </form>
           )}
 
@@ -716,7 +718,7 @@ export const AuthViews: React.FC<AuthViewsProps> = ({
                 </span>
               </button>
 
-              {publicInfo.sandboxQuickAccess !== false && (
+              {publicInfo.adminSandboxAccess !== false ? (
                 <div className="pt-3 border-t border-slate-200 dark:border-slate-800">
                   <button
                     type="button"
@@ -728,6 +730,10 @@ export const AuthViews: React.FC<AuthViewsProps> = ({
                     <span>Instant Demo Admin Console (Faculty Oversight)</span>
                   </button>
                 </div>
+              ) : (
+                <p className="pt-3 border-t border-slate-200 dark:border-slate-800 text-center text-xs text-slate-500 dark:text-slate-400">
+                  Protected by server-configured administrator credentials.
+                </p>
               )}
             </form>
           )}

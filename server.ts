@@ -64,6 +64,7 @@ async function startServer() {
   // 1. PUBLIC METADATA & CURRICULUM CATALOG
   // =========================================================================
   app.get('/api/public/info', (_req, res) => {
+    const adminLocked = isProductionAdminLocked();
     res.json({
       institutionName: store.getSetting(
         'institution_name',
@@ -72,10 +73,29 @@ async function startServer() {
       allowRegistration:
         store.getSetting('allow_student_registration', 'true') === 'true',
       aiConfigured: isAiConfigured(),
-      sandboxQuickAccess: !isProductionAdminLocked(),
+      sandboxQuickAccess: !adminLocked,
+      studentSandboxAccess: true,
+      adminSandboxAccess: !adminLocked,
       subjects: store.tables.subjects,
       topics: store.tables.topics,
     });
+  });
+
+  app.get('/api/public/project-report', (_req, res) => {
+    try {
+      const reportPath = path.resolve(
+        process.cwd(),
+        'documentation',
+        'PROJECT_REPORT_BTECH_VT.md'
+      );
+      const markdown = fs.readFileSync(reportPath, 'utf-8');
+      res.json({
+        title: 'B.Tech CSE (5th Semester) Summer Vocational Training Project Report',
+        markdown,
+      });
+    } catch {
+      res.status(404).json({ error: 'Project report document not found.' });
+    }
   });
 
   // =========================================================================

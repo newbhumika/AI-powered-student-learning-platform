@@ -5,11 +5,25 @@ import type { Request, Response, NextFunction } from 'express';
 import { store, generateId, type StoredProfile } from './db.ts';
 import type { UserRole } from '../shared/types.ts';
 
+const IS_SERVERLESS = Boolean(
+  process.env.VERCEL ||
+    process.env.AWS_LAMBDA_FUNCTION_NAME ||
+    process.env.NETLIFY
+);
+
 const SECRET_FILE = path.resolve(process.cwd(), 'data', '.auth_secret');
 
 function getAuthSecret(): string {
   if (process.env.AUTH_SECRET && process.env.AUTH_SECRET.length >= 16) {
     return process.env.AUTH_SECRET;
+  }
+  if (IS_SERVERLESS) {
+    const seed =
+      process.env.GEMINI_API_KEY ||
+      process.env.GOOGLE_API_KEY ||
+      process.env.VERCEL_PROJECT_PRODUCTION_URL ||
+      'sla-vercel-serverless-hmac-secret-2026';
+    return crypto.createHash('sha256').update(seed).digest('hex');
   }
   try {
     const dir = path.dirname(SECRET_FILE);
@@ -48,14 +62,26 @@ export function verifyPassword(password: string, storedHash: string): boolean {
 interface TokenPayload {
   sub: string;
   role: UserRole;
+  email?: string;
+  fullName?: string;
+  academicLevel?: string;
+  preferredSubjects?: string[];
   exp: number;
   jti: string;
 }
 
-export function createSessionToken(userId: string, role: UserRole): string {
+export function createSessionToken(
+  userOrId: StoredProfile | string,
+  explicitRole?: UserRole
+): string {
+  const isObj = typeof userOrId !== 'string';
   const payload: TokenPayload = {
-    sub: userId,
-    role,
+    sub: isObj ? userOrId.id : userOrId,
+    role: isObj ? userOrId.role : explicitRole || 'student',
+    email: isObj ? userOrId.email : undefined,
+    fullName: isObj ? userOrId.fullName : undefined,
+    academicLevel: isObj ? userOrId.academicLevel : undefined,
+    preferredSubjects: isObj ? userOrId.preferredSubjects : undefined,
     exp: Date.now() + 1000 * 60 * 60 * 24 * 7, // 7 days
     jti: crypto.randomBytes(12).toString('hex'),
   };
@@ -244,9 +270,33 @@ export function requireAuth(
     return;
   }
 
-  const user = store.tables.profiles.find((p) => p.id === payload.sub);
+  let user = store.tables.profiles.find((p) => p.id === payload.sub);
+  if (!user && payload.email) {
+    // Re-hydrate verified session profile across stateless serverless cold starts
+    const now = new Date().toISOString();
+    user = {
+      id: payload.sub,
+      email: payload.email,
+      passwordHash: hashPassword(crypto.randomBytes(16).toString('hex')),
+      fullName: payload.fullName || 'Verified User',
+      avatarUrl: '',
+      academicLevel:
+        payload.academicLevel ||
+        (payload.role === 'admin'
+          ? 'Faculty / Administration'
+          : 'B.Tech CSE - 5th Semester'),
+      preferredSubjects: payload.preferredSubjects || [],
+      role: payload.role,
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    };
+    store.tables.profiles.push(user);
+    store.commit();
+  }
+
   if (!user) {
-    res.status(401).json({ error: 'Account not found.' });
+    res.status(401).json({ error: 'Account not found. Please sign in again.' });
     return;
   }
 

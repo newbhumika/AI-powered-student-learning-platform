@@ -7,6 +7,8 @@ export interface PublicPlatformInfo {
   allowRegistration: boolean;
   aiConfigured: boolean;
   sandboxQuickAccess?: boolean;
+  studentSandboxAccess?: boolean;
+  adminSandboxAccess?: boolean;
   subjects: Subject[];
   topics: Topic[];
 }
@@ -28,6 +30,8 @@ const defaultPublicInfo: PublicPlatformInfo = {
   allowRegistration: true,
   aiConfigured: true,
   sandboxQuickAccess: true,
+  studentSandboxAccess: true,
+  adminSandboxAccess: true,
   subjects: [],
   topics: [],
 };

@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import type {
@@ -42,7 +43,16 @@ export interface DatabaseSchema {
   platform_settings: PlatformSetting[];
 }
 
-const DATA_DIR = path.resolve(process.cwd(), 'data');
+const IS_SERVERLESS = Boolean(
+  process.env.VERCEL ||
+    process.env.AWS_LAMBDA_FUNCTION_NAME ||
+    process.env.NETLIFY
+);
+
+const BUNDLED_DB_FILE = path.resolve(process.cwd(), 'data', 'database.json');
+const DATA_DIR = IS_SERVERLESS
+  ? path.join(os.tmpdir(), 'sla-nosql-store')
+  : path.resolve(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'database.json');
 
 export function generateId(): string {
@@ -216,11 +226,17 @@ class DocumentStore {
       if (!fs.existsSync(DATA_DIR)) {
         fs.mkdirSync(DATA_DIR, { recursive: true });
       }
-      if (fs.existsSync(DB_FILE)) {
-        const raw = fs.readFileSync(DB_FILE, 'utf-8');
+      const candidateFile = fs.existsSync(DB_FILE)
+        ? DB_FILE
+        : IS_SERVERLESS && fs.existsSync(BUNDLED_DB_FILE)
+          ? BUNDLED_DB_FILE
+          : null;
+
+      if (candidateFile) {
+        const raw = fs.readFileSync(candidateFile, 'utf-8');
         const parsed = JSON.parse(raw) as Partial<DatabaseSchema>;
         const seed = getInitialCurriculum();
-        return {
+        const hydrated: DatabaseSchema = {
           profiles: parsed.profiles ?? [],
           subjects: parsed.subjects?.length ? parsed.subjects : seed.subjects,
           topics: parsed.topics?.length ? parsed.topics : seed.topics,
@@ -236,6 +252,10 @@ class DocumentStore {
             ? parsed.platform_settings
             : seed.settings,
         };
+        if (candidateFile !== DB_FILE) {
+          this.persistToDisk(hydrated);
+        }
+        return hydrated;
       }
     } catch (err) {
       console.error('Database initialization warning, creating clean state:', err);
