@@ -124,15 +124,22 @@ export function createApiApp(): express.Express {
   app.get('/api/public/project-report', (_req, res) => {
     try {
       const reportPath = resolveReportFilePath();
-      if (!reportPath) {
-        res.status(404).json({ error: 'Project report document not found.' });
+      if (reportPath) {
+        const markdown = fs.readFileSync(reportPath, 'utf-8');
+        res.json({
+          title: 'B.Tech CSE (5th Semester) Summer Vocational Training Project Report',
+          markdown,
+        });
         return;
       }
-      const markdown = fs.readFileSync(reportPath, 'utf-8');
-      res.json({
-        title: 'B.Tech CSE (5th Semester) Summer Vocational Training Project Report',
-        markdown,
-      });
+      if (process.env.BUNDLED_PROJECT_REPORT_MD) {
+        res.json({
+          title: 'B.Tech CSE (5th Semester) Summer Vocational Training Project Report',
+          markdown: process.env.BUNDLED_PROJECT_REPORT_MD,
+        });
+        return;
+      }
+      res.status(404).json({ error: 'Project report document not found.' });
     } catch {
       res.status(404).json({ error: 'Project report document not found.' });
     }
