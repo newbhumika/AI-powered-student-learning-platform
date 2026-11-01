@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext.tsx';
 import { LandingPage } from './components/LandingPage.tsx';
@@ -17,6 +17,7 @@ const AppRouter: React.FC = () => {
   const { user, isLoading, isSwitchingPortal, enterPortalPasswordless } = useAuth();
   const [view, setView] = useState<TopView>('landing');
   const [authMode, setAuthMode] = useState<AuthScreenMode>('login');
+  const initialRouteHandled = useRef(false);
 
   const handleDirectPortalOpen = async (
     role: 'student' | 'admin',
@@ -34,6 +35,29 @@ const AppRouter: React.FC = () => {
       setView('auth');
     }
   };
+
+  useEffect(() => {
+    if (isLoading || initialRouteHandled.current) return;
+    initialRouteHandled.current = true;
+    const pathname =
+      window.location.pathname.toLowerCase().replace(/\/+$/, '') || '/';
+    if (pathname === '/admin' || pathname === '/admin-portal') {
+      void handleDirectPortalOpen('admin');
+    } else if (
+      pathname === '/student' ||
+      pathname === '/student-portal' ||
+      pathname === '/dashboard'
+    ) {
+      void handleDirectPortalOpen('student');
+    } else if (pathname === '/login') {
+      setAuthMode('login');
+      setView('auth');
+    } else if (pathname === '/register' || pathname === '/signup') {
+      setAuthMode('register');
+      setView('auth');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading]);
 
   if (isLoading || isSwitchingPortal) {
     return (

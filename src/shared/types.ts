@@ -144,6 +144,7 @@ export interface Quiz {
   timeLimitSeconds: number;
   createdAt: string;
   questions?: QuizQuestion[];
+  quizToken?: string;
 }
 
 export interface QuizAnswerRecord {

@@ -58,6 +58,16 @@
 
 ---
 
-## 4. Cloud Deployment
-- Configure `GEMINI_API_KEY`, `AUTH_SECRET`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD` in your hosting provider's Environment Variables / Secrets panel.
+## 4. Cloud & Vercel Deployment
+
+### Option A: Vercel Deployment (Zero-Config Included)
+The repository includes `vercel.json` and a pre-bundled Serverless Express API entry (`api/index.js`) so static SPA routes and `/api/*` endpoints work out of the box without `404: NOT_FOUND` errors:
+1. Push the latest commits (including `vercel.json` and `api/index.js`) to your GitHub repository connected to Vercel.
+2. In your Vercel Project Dashboard → **Settings → Environment Variables**, add:
+   - `GEMINI_API_KEY` = your Google AI Studio Gemini API key
+   - `AUTH_SECRET` = any random 32+ character string (optional; auto-derived if omitted)
+3. Trigger a **Redeploy** in Vercel. Both `/` (SPA routes `/student`, `/admin`, etc.) and `/api/*` AI endpoints will be served automatically.
+
+### Option B: Node / Cloud Run / Container Hosting
+- Configure `GEMINI_API_KEY` (and optional `AUTH_SECRET`) in your hosting provider's Environment Variables / Secrets panel.
 - Set the build command to `npm run build` and the start command to `npm start` exposing port `3000`.

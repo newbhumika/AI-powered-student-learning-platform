@@ -106,6 +106,36 @@ export function revokeSessionToken(token: string): void {
   revokedTokens.add(token);
 }
 
+export function signStatelessPayload<T>(data: T): string {
+  const encoded = Buffer.from(JSON.stringify(data)).toString('base64url');
+  const signature = crypto
+    .createHmac('sha256', AUTH_SECRET)
+    .update(`stateless:${encoded}`)
+    .digest('base64url');
+  return `${encoded}.${signature}`;
+}
+
+export function verifyStatelessPayload<T>(token: string): T | null {
+  if (!token) return null;
+  const parts = token.split('.');
+  if (parts.length !== 2) return null;
+  const [encoded, signature] = parts;
+  const expectedSig = crypto
+    .createHmac('sha256', AUTH_SECRET)
+    .update(`stateless:${encoded}`)
+    .digest('base64url');
+  const sigBuf = Buffer.from(signature);
+  const expBuf = Buffer.from(expectedSig);
+  if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+    return null;
+  }
+  try {
+    return JSON.parse(Buffer.from(encoded, 'base64url').toString('utf-8')) as T;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Synchronizes environment-configured Admin account if ADMIN_EMAIL & ADMIN_PASSWORD are provided.
  */

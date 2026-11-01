@@ -171,6 +171,13 @@ export const StudyAssistant: React.FC<StudyAssistantProps> = ({
     setMessages((prev) => (startFreshThread ? [optimisticMsg] : [...prev, optimisticMsg]));
 
     try {
+      const priorHistory = startFreshThread
+        ? []
+        : messages
+            .filter((m) => !m.id.startsWith('temp-'))
+            .slice(-10)
+            .map((m) => ({ role: m.role, content: m.content }));
+
       const res = await apiRequest<{
         conversation: ChatConversation;
         userMessage: ChatMessage;
@@ -181,6 +188,7 @@ export const StudyAssistant: React.FC<StudyAssistantProps> = ({
           prompt: promptText,
           mode,
           conversationId: targetConversationId,
+          history: priorHistory,
         }),
       });
 

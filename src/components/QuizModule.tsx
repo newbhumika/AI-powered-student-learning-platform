@@ -174,6 +174,7 @@ export const QuizModule: React.FC<QuizModuleProps> = ({ autoQuizRequest }) => {
           body: JSON.stringify({
             answers: selectedAnswers,
             timeTakenSeconds: elapsedSec,
+            quizToken: activeQuiz.quizToken,
           }),
         }
       );
