@@ -138,9 +138,87 @@ export function syncEnvironmentAdmin(): void {
   store.commit();
 }
 
+export function isProductionAdminLocked(): boolean {
+  const adminEmail = process.env.ADMIN_EMAIL?.trim();
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  return Boolean(
+    adminEmail &&
+      adminPassword &&
+      adminPassword !== 'ChangeMeStrongPassword123!'
+  );
+}
+
 export function hasConfiguredAdmin(): boolean {
   syncEnvironmentAdmin();
   return store.tables.profiles.some((p) => p.role === 'admin' && p.isActive);
+}
+
+/**
+ * Ensures a ready-to-use NoSQL sandbox Student or Admin profile exists in data/database.json
+ * when requested via the server-side academic demonstration endpoint (without exposing credentials in client code).
+ */
+export function getOrCreateSandboxProfile(role: UserRole): StoredProfile {
+  const now = new Date().toISOString();
+
+  if (role === 'admin') {
+    const existingAdmin = store.tables.profiles.find(
+      (p) => p.role === 'admin' && p.isActive
+    );
+    if (existingAdmin) {
+      return existingAdmin;
+    }
+
+    const adminProfile: StoredProfile = {
+      id: generateId(),
+      email: 'admin@edunexus.edu',
+      passwordHash: hashPassword(crypto.randomBytes(16).toString('hex')),
+      fullName: 'Dr. Rajesh Verma',
+      avatarUrl: '',
+      academicLevel: 'Faculty / Administration',
+      preferredSubjects: [],
+      role: 'admin',
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    };
+    store.tables.profiles.push(adminProfile);
+    store.commit();
+    return adminProfile;
+  }
+
+  const sandboxStudentEmail = 'aarav.sharma@university.edu';
+  const existingStudent = store.tables.profiles.find(
+    (p) => p.email.toLowerCase() === sandboxStudentEmail && p.role === 'student'
+  );
+  if (existingStudent) {
+    if (!existingStudent.isActive) {
+      existingStudent.isActive = true;
+      existingStudent.updatedAt = now;
+      store.commit();
+    }
+    return existingStudent;
+  }
+
+  const studentProfile: StoredProfile = {
+    id: generateId(),
+    email: sandboxStudentEmail,
+    passwordHash: hashPassword(crypto.randomBytes(16).toString('hex')),
+    fullName: 'Aarav Sharma',
+    avatarUrl: '',
+    academicLevel: 'B.Tech CSE - 5th Semester',
+    preferredSubjects: [
+      'Data Structures & Algorithms',
+      'Operating Systems',
+      'Database Management Systems',
+    ],
+    role: 'student',
+    isActive: true,
+    createdAt: now,
+    updatedAt: now,
+  };
+  store.tables.profiles.push(studentProfile);
+  store.commit();
+  return studentProfile;
 }
 
 export interface AuthenticatedRequest extends Request {

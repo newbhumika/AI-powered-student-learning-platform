@@ -8,6 +8,7 @@ import {
   ShieldCheck,
   UserPlus,
   LogIn,
+  Zap,
 } from 'lucide-react';
 import { apiRequest } from '../lib/api.ts';
 import { useAuth } from '../context/AuthContext.tsx';
@@ -35,7 +36,7 @@ export const AuthViews: React.FC<AuthViewsProps> = ({
   onBackToLanding,
   onAuthenticated,
 }) => {
-  const { establishSession, publicInfo } = useAuth();
+  const { user, establishSession, publicInfo } = useAuth();
   const [mode, setMode] = useState<AuthScreenMode>(initialMode);
   const [adminConfigured, setAdminConfigured] = useState<boolean | null>(null);
 
@@ -209,6 +210,28 @@ export const AuthViews: React.FC<AuthViewsProps> = ({
     }
   };
 
+  const handleSandboxAccess = async (targetRole: 'student' | 'admin') => {
+    setError(null);
+    setSubmitting(true);
+    try {
+      const res = await apiRequest<{ token: string; user: UserProfile }>(
+        '/api/auth/sandbox-session',
+        {
+          method: 'POST',
+          body: JSON.stringify({ role: targetRole }),
+        }
+      );
+      establishSession(res.token, res.user);
+      onAuthenticated(res.user);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : 'Unable to start session.'
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const availableSubjects =
     publicInfo.subjects.length > 0
       ? publicInfo.subjects.map((s) => s.name)
@@ -281,6 +304,21 @@ export const AuthViews: React.FC<AuthViewsProps> = ({
             Admin Portal
           </button>
         </div>
+
+        {user && (
+          <div className="mb-4 rounded-xl border border-teal-600/30 bg-teal-600/10 px-4 py-3 text-xs text-slate-700 dark:text-slate-200 flex items-center justify-between gap-3">
+            <span>
+              Signed in as <strong>{user.fullName}</strong> ({user.role}). Sign in below to switch accounts.
+            </span>
+            <button
+              type="button"
+              onClick={() => onAuthenticated(user)}
+              className="font-semibold text-teal-700 dark:text-teal-400 hover:underline whitespace-nowrap cursor-pointer"
+            >
+              Resume Session
+            </button>
+          </div>
+        )}
 
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#10191E] p-7 sm:p-8">
           {error && (
@@ -368,8 +406,35 @@ export const AuthViews: React.FC<AuthViewsProps> = ({
                 ) : (
                   <LogIn className="w-4 h-4" />
                 )}
-                <span>Sign In to Dashboard</span>
+                <span>Sign In to Student Dashboard</span>
               </button>
+
+              {publicInfo.sandboxQuickAccess !== false && (
+                <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2.5">
+                  <button
+                    type="button"
+                    disabled={submitting}
+                    onClick={() => handleSandboxAccess('student')}
+                    className="w-full py-2.5 px-4 rounded-lg border border-teal-600/40 bg-teal-600/10 hover:bg-teal-600/15 text-teal-800 dark:text-teal-300 text-xs font-semibold inline-flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                  >
+                    <Zap className="w-3.5 h-3.5" />
+                    <span>Instant Demo Student Login (Aarav Sharma · CSE 5th Sem)</span>
+                  </button>
+                  <p className="text-center text-xs text-slate-500 dark:text-slate-400">
+                    New here?{' '}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMode('register');
+                        setError(null);
+                      }}
+                      className="text-teal-700 dark:text-teal-400 font-medium hover:underline cursor-pointer"
+                    >
+                      Create your own Student Account
+                    </button>
+                  </p>
+                </div>
+              )}
             </form>
           )}
 
@@ -646,17 +711,31 @@ export const AuthViews: React.FC<AuthViewsProps> = ({
                 )}
                 <span>
                   {adminConfigured === false
-                    ? 'Initialize Admin & Enter Console'
+                    ? 'Create Administrator & Enter Console'
                     : 'Sign In to Admin Console'}
                 </span>
               </button>
+
+              {publicInfo.sandboxQuickAccess !== false && (
+                <div className="pt-3 border-t border-slate-200 dark:border-slate-800">
+                  <button
+                    type="button"
+                    disabled={submitting}
+                    onClick={() => handleSandboxAccess('admin')}
+                    className="w-full py-2.5 px-4 rounded-lg border border-teal-600/40 bg-teal-600/10 hover:bg-teal-600/15 text-teal-800 dark:text-teal-300 text-xs font-semibold inline-flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                  >
+                    <Zap className="w-3.5 h-3.5" />
+                    <span>Instant Demo Admin Console (Faculty Oversight)</span>
+                  </button>
+                </div>
+              )}
             </form>
           )}
         </div>
       </div>
 
       <p className="text-center text-xs text-slate-500 dark:text-slate-500 mt-8">
-        Protected by server-side cryptographic password hashing and role-verified session tokens.
+        Powered by persistent server-side document storage, scrypt password hashing, and role-verified session tokens.
       </p>
     </div>
   );

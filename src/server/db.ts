@@ -204,7 +204,7 @@ function getInitialCurriculum(): {
   return { subjects, topics, settings };
 }
 
-class RelationalStore {
+class DocumentStore {
   data: DatabaseSchema;
 
   constructor() {
@@ -308,7 +308,7 @@ class RelationalStore {
   }
 }
 
-export const store = new RelationalStore();
+export const store = new DocumentStore();
 
 export function sanitizeProfile(profile: StoredProfile): UserProfile {
   return {

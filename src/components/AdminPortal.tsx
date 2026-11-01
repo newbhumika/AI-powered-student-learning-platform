@@ -4,6 +4,8 @@ import {
   BookOpen,
   CheckCircle2,
   Eye,
+  GraduationCap,
+  KeyRound,
   LogOut,
   Moon,
   Plus,
@@ -13,6 +15,7 @@ import {
   Shield,
   Sun,
   Trash2,
+  UserPlus,
   Users,
   X,
   BarChart3,
@@ -40,24 +43,55 @@ type AdminTab = 'overview' | 'students' | 'curriculum' | 'settings';
 
 interface AdminPortalProps {
   onExitToHome: () => void;
+  onSwitchToStudentPortal: () => void;
 }
 
-export const AdminPortal: React.FC<AdminPortalProps> = ({ onExitToHome }) => {
-  const { user, logout, theme, toggleTheme, refreshPublicInfo } = useAuth();
+const ACADEMIC_LEVELS = [
+  'B.Tech CSE - 5th Semester',
+  'B.Tech CSE - 3rd / 4th Semester',
+  'B.Tech CSE - Final Year',
+  'BCA / B.Sc Computer Science',
+  'M.Tech / MCA Postgraduate',
+  'High School / Class 11-12 PCM',
+];
+
+export const AdminPortal: React.FC<AdminPortalProps> = ({
+  onExitToHome,
+  onSwitchToStudentPortal,
+}) => {
+  const { user, updateLocalUser, logout, theme, toggleTheme, refreshPublicInfo } =
+    useAuth();
   const [tab, setTab] = useState<AdminTab>('overview');
   const [data, setData] = useState<AdminOverviewData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  // Student search & inspect modal
+  // Student search, enroll & inspect state
   const [searchQuery, setSearchQuery] = useState('');
+  const [showEnrollForm, setShowEnrollForm] = useState(false);
+  const [enrollName, setEnrollName] = useState('');
+  const [enrollEmail, setEnrollEmail] = useState('');
+  const [enrollPassword, setEnrollPassword] = useState('');
+  const [enrollLevel, setEnrollLevel] = useState(ACADEMIC_LEVELS[0]);
+
   const [inspectedStudent, setInspectedStudent] = useState<{
     student: UserProfile;
     attempts: QuizAttempt[];
     notesCount: number;
+    notes?: {
+      id: string;
+      title: string;
+      subject: string;
+      noteType: string;
+      updatedAt: string;
+    }[];
     activities: UserActivity[];
   } | null>(null);
+  const [resetStudentPwd, setResetStudentPwd] = useState('');
+  const [confirmDeleteStudentId, setConfirmDeleteStudentId] = useState<string | null>(
+    null
+  );
 
   // New Subject & Topic inputs
   const [subjName, setSubjName] = useState('');
@@ -70,8 +104,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onExitToHome }) => {
   const [topicDiff, setTopicDiff] = useState<QuizDifficulty>('Medium');
   const [topicDesc, setTopicDesc] = useState('');
 
-  // Settings form map
+  // Settings & Admin Account forms
   const [settingsForm, setSettingsForm] = useState<Record<string, string>>({});
+  const [adminAccountName, setAdminAccountName] = useState(user?.fullName || '');
+  const [adminAccountEmail, setAdminAccountEmail] = useState(user?.email || '');
+  const [adminNewPassword, setAdminNewPassword] = useState('');
+
+  const [coAdminName, setCoAdminName] = useState('');
+  const [coAdminEmail, setCoAdminEmail] = useState('');
+  const [coAdminPassword, setCoAdminPassword] = useState('');
 
   const fetchOverview = async () => {
     try {
@@ -121,12 +162,128 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onExitToHome }) => {
         student: UserProfile;
         attempts: QuizAttempt[];
         notesCount: number;
+        notes?: {
+          id: string;
+          title: string;
+          subject: string;
+          noteType: string;
+          updatedAt: string;
+        }[];
         activities: UserActivity[];
       }>(`/api/admin/students/${studentId}`);
       setInspectedStudent(res);
+      setResetStudentPwd('');
+      setConfirmDeleteStudentId(null);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : 'Failed to inspect student.'
+      );
+    }
+  };
+
+  const handleEnrollStudent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await apiRequest('/api/admin/students', {
+        method: 'POST',
+        body: JSON.stringify({
+          fullName: enrollName,
+          email: enrollEmail,
+          password: enrollPassword,
+          academicLevel: enrollLevel,
+        }),
+      });
+      setEnrollName('');
+      setEnrollEmail('');
+      setEnrollPassword('');
+      setShowEnrollForm(false);
+      await fetchOverview();
+      setNotice('New student account enrolled and ready for Student Sign In.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to enroll student.');
+    }
+  };
+
+  const handleAdminResetStudentPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inspectedStudent) return;
+    try {
+      const res = await apiRequest<{ message: string }>(
+        `/api/admin/students/${inspectedStudent.student.id}/password`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ newPassword: resetStudentPwd }),
+        }
+      );
+      setResetStudentPwd('');
+      setNotice(res.message);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : 'Failed to reset student password.'
+      );
+    }
+  };
+
+  const handleDeleteStudent = async (studentId: string) => {
+    try {
+      await apiRequest(`/api/admin/students/${studentId}`, {
+        method: 'DELETE',
+      });
+      if (inspectedStudent?.student.id === studentId) {
+        setInspectedStudent(null);
+      }
+      setConfirmDeleteStudentId(null);
+      await fetchOverview();
+      setNotice('Student account and associated records removed.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete student.');
+    }
+  };
+
+  const handleUpdateAdminAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await apiRequest<{ user: UserProfile; message: string }>(
+        '/api/admin/account',
+        {
+          method: 'PUT',
+          body: JSON.stringify({
+            fullName: adminAccountName,
+            email: adminAccountEmail,
+            newPassword: adminNewPassword || undefined,
+          }),
+        }
+      );
+      updateLocalUser(res.user);
+      setAdminNewPassword('');
+      await fetchOverview();
+      setNotice(res.message);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : 'Failed to update admin account.'
+      );
+    }
+  };
+
+  const handleAddCoAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await apiRequest('/api/admin/admins', {
+        method: 'POST',
+        body: JSON.stringify({
+          fullName: coAdminName,
+          email: coAdminEmail,
+          password: coAdminPassword,
+        }),
+      });
+      setCoAdminName('');
+      setCoAdminEmail('');
+      setCoAdminPassword('');
+      await fetchOverview();
+      setNotice('Additional Faculty Administrator added.');
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : 'Failed to add administrator.'
       );
     }
   };
@@ -267,6 +424,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onExitToHome }) => {
         <div className="space-y-2 pt-4 border-t border-slate-200 dark:border-slate-800">
           <button
             type="button"
+            onClick={onSwitchToStudentPortal}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-teal-700 dark:text-teal-400 hover:bg-teal-600/10 transition-colors cursor-pointer"
+          >
+            <GraduationCap className="w-4 h-4" />
+            <span>Student Login / Portal</span>
+          </button>
+
+          <button
+            type="button"
             onClick={toggleTheme}
             className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
           >
@@ -292,7 +458,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onExitToHome }) => {
             className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
           >
             <LogOut className="w-4 h-4" />
-            <span>Sign Out ({user?.email})</span>
+            <span className="truncate">Sign Out ({user?.email})</span>
           </button>
         </div>
       </aside>
@@ -308,7 +474,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onExitToHome }) => {
             </span>
           </div>
 
-          <div className="flex md:hidden items-center gap-2">
+          <div className="flex md:hidden items-center gap-1.5 overflow-x-auto">
             {(['overview', 'students', 'curriculum', 'settings'] as AdminTab[]).map(
               (t) => (
                 <button
@@ -327,13 +493,22 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onExitToHome }) => {
             )}
           </div>
 
-          <button
-            type="button"
-            onClick={onExitToHome}
-            className="text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white whitespace-nowrap shrink-0 cursor-pointer"
-          >
-            Public Landing Page
-          </button>
+          <div className="flex items-center gap-4 shrink-0">
+            <button
+              type="button"
+              onClick={onSwitchToStudentPortal}
+              className="text-xs font-medium text-teal-700 dark:text-teal-400 hover:underline whitespace-nowrap cursor-pointer"
+            >
+              Student Login
+            </button>
+            <button
+              type="button"
+              onClick={onExitToHome}
+              className="text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white whitespace-nowrap cursor-pointer"
+            >
+              Home
+            </button>
+          </div>
         </header>
 
         <main className="flex-1 p-6 lg:p-8 max-w-7xl w-full mx-auto space-y-6">
@@ -506,32 +681,113 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onExitToHome }) => {
               {/* TAB 2: STUDENT MANAGEMENT */}
               {tab === 'students' && (
                 <div className="space-y-6">
-                  <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#10191E] p-6">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#10191E] p-6 space-y-5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div>
                         <h3 className="font-display text-lg font-bold text-slate-900 dark:text-white">
                           Registered Students ({data.students.length})
                         </h3>
                         <p className="text-xs text-slate-500 dark:text-slate-400">
-                          Inspect student profiles, learning logs, or manage account access
+                          Enroll new students, inspect learning records, reset passwords, or manage account access
                         </p>
                       </div>
 
-                      <div className="relative w-full sm:w-72">
-                        <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                        <input
-                          type="text"
-                          value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
-                          placeholder="Search name or email..."
-                          className="w-full pl-9 pr-3.5 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#0A1013] text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-600"
-                        />
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <div className="relative w-full sm:w-64">
+                          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder="Search name or email..."
+                            className="w-full pl-9 pr-3.5 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#0A1013] text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-600"
+                          />
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setShowEnrollForm((prev) => !prev)}
+                          className="px-3.5 py-2 rounded-lg bg-teal-700 hover:bg-teal-600 dark:bg-teal-600 dark:hover:bg-teal-500 text-white text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                        >
+                          <UserPlus className="w-3.5 h-3.5" />
+                          <span>{showEnrollForm ? 'Close Form' : 'Enroll Student'}</span>
+                        </button>
                       </div>
                     </div>
 
+                    {showEnrollForm && (
+                      <form
+                        onSubmit={handleEnrollStudent}
+                        className="rounded-xl border border-teal-600/30 bg-[#F6F8FA] dark:bg-[#0A1013] p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end"
+                      >
+                        <div>
+                          <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">
+                            Student Full Name
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={enrollName}
+                            onChange={(e) => setEnrollName(e.target.value)}
+                            placeholder="Priya Nair"
+                            className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#10191E]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">
+                            Student Login Email
+                          </label>
+                          <input
+                            type="email"
+                            required
+                            value={enrollEmail}
+                            onChange={(e) => setEnrollEmail(e.target.value)}
+                            placeholder="priya@university.edu"
+                            className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#10191E]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">
+                            Initial Password
+                          </label>
+                          <input
+                            type="password"
+                            required
+                            minLength={6}
+                            value={enrollPassword}
+                            onChange={(e) => setEnrollPassword(e.target.value)}
+                            placeholder="Min 6 chars"
+                            className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#10191E]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">
+                            Academic Level
+                          </label>
+                          <select
+                            value={enrollLevel}
+                            onChange={(e) => setEnrollLevel(e.target.value)}
+                            className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#10191E]"
+                          >
+                            {ACADEMIC_LEVELS.map((lvl) => (
+                              <option key={lvl} value={lvl}>
+                                {lvl}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <button
+                          type="submit"
+                          className="py-2 px-4 rounded-lg bg-teal-700 hover:bg-teal-600 dark:bg-teal-600 dark:hover:bg-teal-500 text-white text-xs font-semibold cursor-pointer"
+                        >
+                          Create Student Login
+                        </button>
+                      </form>
+                    )}
+
                     {filteredStudents.length === 0 ? (
                       <p className="text-xs text-slate-500 dark:text-slate-400 py-8 text-center">
-                        No matching student records found.
+                        No student accounts registered yet. Click &ldquo;Enroll Student&rdquo; above or use Student Registration.
                       </p>
                     ) : (
                       <div className="overflow-x-auto">
@@ -601,8 +857,34 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onExitToHome }) => {
                                     }
                                     className="text-slate-600 dark:text-slate-400 hover:underline cursor-pointer"
                                   >
-                                    {st.isActive ? 'Deactivate' : 'Activate'}
+                                    {st.isActive ? 'Suspend' : 'Activate'}
                                   </button>
+                                  {confirmDeleteStudentId === st.id ? (
+                                    <span className="inline-flex items-center gap-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteStudent(st.id)}
+                                        className="text-red-600 dark:text-red-400 font-semibold hover:underline cursor-pointer"
+                                      >
+                                        Confirm Delete
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setConfirmDeleteStudentId(null)}
+                                        className="text-slate-500 hover:underline cursor-pointer"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </span>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => setConfirmDeleteStudentId(st.id)}
+                                      className="text-red-600/80 dark:text-red-400/80 hover:text-red-600 hover:underline cursor-pointer"
+                                    >
+                                      Remove
+                                    </button>
+                                  )}
                                 </td>
                               </tr>
                             ))}
@@ -618,7 +900,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onExitToHome }) => {
                       <div className="flex items-start justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
                         <div>
                           <p className="text-xs text-teal-700 dark:text-teal-400 font-medium">
-                            Student Activity Profile
+                            Student Activity & Credential Profile
                           </p>
                           <h4 className="font-display text-lg font-bold text-slate-900 dark:text-white">
                             {inspectedStudent.student.fullName} (
@@ -640,7 +922,33 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onExitToHome }) => {
                         </button>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Admin Reset Student Password */}
+                      <form
+                        onSubmit={handleAdminResetStudentPassword}
+                        className="flex flex-wrap items-center gap-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0A1013] p-3"
+                      >
+                        <KeyRound className="w-4 h-4 text-teal-700 dark:text-teal-400 shrink-0" />
+                        <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                          Reset Student Password:
+                        </span>
+                        <input
+                          type="password"
+                          required
+                          minLength={6}
+                          value={resetStudentPwd}
+                          onChange={(e) => setResetStudentPwd(e.target.value)}
+                          placeholder="New password (min 6 chars)"
+                          className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#10191E] flex-1 min-w-[180px]"
+                        />
+                        <button
+                          type="submit"
+                          className="px-3.5 py-1.5 rounded-lg bg-teal-700 hover:bg-teal-600 dark:bg-teal-600 text-white text-xs font-semibold cursor-pointer"
+                        >
+                          Set Password
+                        </button>
+                      </form>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div>
                           <h5 className="text-xs font-semibold text-slate-900 dark:text-white mb-2">
                             Quiz Attempts ({inspectedStudent.attempts.length})
@@ -654,12 +962,40 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onExitToHome }) => {
                               {inspectedStudent.attempts.map((a) => (
                                 <div
                                   key={a.id}
-                                  className="text-xs border-b border-slate-200 dark:border-slate-800 pb-2"
+                                  className="text-xs border-b border-slate-200 dark:border-slate-800 pb-2 tabular-nums"
                                 >
                                   <span className="font-medium text-slate-800 dark:text-slate-200">
                                     {a.topic}
                                   </span>{' '}
                                   · {a.score}/{a.totalQuestions} ({a.percentage}%)
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <div>
+                          <h5 className="text-xs font-semibold text-slate-900 dark:text-white mb-2">
+                            Saved Study Notes ({inspectedStudent.notesCount})
+                          </h5>
+                          {!inspectedStudent.notes ||
+                          inspectedStudent.notes.length === 0 ? (
+                            <p className="text-xs text-slate-500">
+                              No study notes saved yet.
+                            </p>
+                          ) : (
+                            <div className="space-y-2 max-h-48 overflow-y-auto">
+                              {inspectedStudent.notes.map((n) => (
+                                <div
+                                  key={n.id}
+                                  className="text-xs border-b border-slate-200 dark:border-slate-800 pb-2"
+                                >
+                                  <p className="font-medium text-slate-800 dark:text-slate-200">
+                                    {n.title}
+                                  </p>
+                                  <p className="text-[11px] text-slate-500">
+                                    {n.subject} · {n.noteType}
+                                  </p>
                                 </div>
                               ))}
                             </div>
@@ -865,51 +1201,179 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onExitToHome }) => {
                 </div>
               )}
 
-              {/* TAB 4: PLATFORM SETTINGS */}
+              {/* TAB 4: PLATFORM SETTINGS & ADMIN GOVERNANCE */}
               {tab === 'settings' && (
-                <form
-                  onSubmit={handleSaveSettings}
-                  className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#10191E] p-6 sm:p-8 max-w-2xl space-y-5"
-                >
-                  <div>
-                    <h3 className="font-display text-lg font-bold text-slate-900 dark:text-white">
-                      Platform Governance Settings
-                    </h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                      Configure institution branding, student self-registration, AI rate limits, and default quiz timing.
-                    </p>
-                  </div>
-
-                  {data.settings.map((setting) => (
-                    <div key={setting.key}>
-                      <label className="block text-xs font-semibold text-slate-800 dark:text-slate-200 mb-1">
-                        {setting.key}
-                      </label>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-1.5">
-                        {setting.description}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  <form
+                    onSubmit={handleSaveSettings}
+                    className="lg:col-span-7 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#10191E] p-6 sm:p-8 space-y-5 h-fit"
+                  >
+                    <div>
+                      <h3 className="font-display text-lg font-bold text-slate-900 dark:text-white">
+                        Platform Governance Settings
+                      </h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                        Configure institution branding, student self-registration, AI rate limits, and default quiz timing.
                       </p>
+                    </div>
+
+                    {data.settings.map((setting) => (
+                      <div key={setting.key}>
+                        <label className="block text-xs font-semibold text-slate-800 dark:text-slate-200 mb-1">
+                          {setting.key}
+                        </label>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-1.5">
+                          {setting.description}
+                        </p>
+                        <input
+                          type="text"
+                          value={settingsForm[setting.key] ?? setting.value}
+                          onChange={(e) =>
+                            setSettingsForm((prev) => ({
+                              ...prev,
+                              [setting.key]: e.target.value,
+                            }))
+                          }
+                          className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#0A1013] text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-600"
+                        />
+                      </div>
+                    ))}
+
+                    <button
+                      type="submit"
+                      className="px-5 py-2.5 rounded-lg bg-teal-700 hover:bg-teal-600 dark:bg-teal-600 dark:hover:bg-teal-500 text-sm font-semibold text-white inline-flex items-center gap-2 transition-colors cursor-pointer"
+                    >
+                      <Save className="w-4 h-4" />
+                      <span>Save Platform Settings</span>
+                    </button>
+                  </form>
+
+                  <div className="lg:col-span-5 space-y-6">
+                    {/* Update Current Admin Credentials */}
+                    <form
+                      onSubmit={handleUpdateAdminAccount}
+                      className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#10191E] p-6 space-y-4"
+                    >
+                      <div>
+                        <h3 className="font-display text-base font-bold text-slate-900 dark:text-white">
+                          My Administrator Credentials
+                        </h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                          Update your administrator login email or set a custom password for Admin Portal sign-in.
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                          Administrator Name
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={adminAccountName}
+                          onChange={(e) => setAdminAccountName(e.target.value)}
+                          className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#0A1013]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                          Admin Sign-In Email
+                        </label>
+                        <input
+                          type="email"
+                          required
+                          value={adminAccountEmail}
+                          onChange={(e) => setAdminAccountEmail(e.target.value)}
+                          className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#0A1013]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                          New Password (optional, min 8 chars)
+                        </label>
+                        <input
+                          type="password"
+                          minLength={8}
+                          value={adminNewPassword}
+                          onChange={(e) => setAdminNewPassword(e.target.value)}
+                          placeholder="Leave blank to keep current password"
+                          className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#0A1013]"
+                        />
+                      </div>
+
+                      <button
+                        type="submit"
+                        className="w-full py-2 px-4 rounded-lg bg-slate-900 dark:bg-teal-600 hover:bg-slate-800 dark:hover:bg-teal-500 text-white text-xs font-semibold cursor-pointer"
+                      >
+                        Update Admin Account
+                      </button>
+                    </form>
+
+                    {/* Add Co-Administrator */}
+                    <form
+                      onSubmit={handleAddCoAdmin}
+                      className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#10191E] p-6 space-y-4"
+                    >
+                      <div>
+                        <h3 className="font-display text-base font-bold text-slate-900 dark:text-white">
+                          Faculty Administrators ({data.admins?.length || 1})
+                        </h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                          Grant Admin Portal access to an additional faculty evaluator.
+                        </p>
+                      </div>
+
+                      <div className="space-y-1.5 max-h-28 overflow-y-auto border-b border-slate-200 dark:border-slate-800 pb-3">
+                        {(data.admins || []).map((adm) => (
+                          <div
+                            key={adm.id}
+                            className="text-xs flex items-center justify-between gap-2"
+                          >
+                            <span className="font-medium text-slate-800 dark:text-slate-200">
+                              {adm.fullName}
+                            </span>
+                            <span className="text-slate-500">{adm.email}</span>
+                          </div>
+                        ))}
+                      </div>
+
                       <input
                         type="text"
-                        value={settingsForm[setting.key] ?? setting.value}
-                        onChange={(e) =>
-                          setSettingsForm((prev) => ({
-                            ...prev,
-                            [setting.key]: e.target.value,
-                          }))
-                        }
-                        className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#0A1013] text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-600"
+                        required
+                        placeholder="Faculty Name"
+                        value={coAdminName}
+                        onChange={(e) => setCoAdminName(e.target.value)}
+                        className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#0A1013]"
                       />
-                    </div>
-                  ))}
-
-                  <button
-                    type="submit"
-                    className="px-5 py-2.5 rounded-lg bg-teal-700 hover:bg-teal-600 dark:bg-teal-600 dark:hover:bg-teal-500 text-sm font-semibold text-white inline-flex items-center gap-2 transition-colors cursor-pointer"
-                  >
-                    <Save className="w-4 h-4" />
-                    <span>Save Platform Settings</span>
-                  </button>
-                </form>
+                      <input
+                        type="email"
+                        required
+                        placeholder="faculty@university.edu"
+                        value={coAdminEmail}
+                        onChange={(e) => setCoAdminEmail(e.target.value)}
+                        className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#0A1013]"
+                      />
+                      <input
+                        type="password"
+                        required
+                        minLength={8}
+                        placeholder="Admin Password (min 8 chars)"
+                        value={coAdminPassword}
+                        onChange={(e) => setCoAdminPassword(e.target.value)}
+                        className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#0A1013]"
+                      />
+                      <button
+                        type="submit"
+                        className="w-full py-2 px-4 rounded-lg bg-teal-700 hover:bg-teal-600 dark:bg-teal-600 dark:hover:bg-teal-500 text-white text-xs font-semibold inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <UserPlus className="w-3.5 h-3.5" />
+                        <span>Add Faculty Administrator</span>
+                      </button>
+                    </form>
+                  </div>
+                </div>
               )}
             </>
           )}

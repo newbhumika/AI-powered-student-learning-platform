@@ -270,4 +270,6 @@ export interface AdminOverviewData {
   subjects: Subject[];
   topics: Topic[];
   settings: PlatformSetting[];
+  admins: UserProfile[];
 }
+

@@ -13,6 +13,8 @@ import {
   requireAdmin,
   hasConfiguredAdmin,
   syncEnvironmentAdmin,
+  isProductionAdminLocked,
+  getOrCreateSandboxProfile,
   type AuthenticatedRequest,
 } from './src/server/auth.ts';
 import { aiRateLimiter } from './src/server/rateLimit.ts';
@@ -70,6 +72,7 @@ async function startServer() {
       allowRegistration:
         store.getSetting('allow_student_registration', 'true') === 'true',
       aiConfigured: isAiConfigured(),
+      sandboxQuickAccess: !isProductionAdminLocked(),
       subjects: store.tables.subjects,
       topics: store.tables.topics,
     });
@@ -159,9 +162,18 @@ async function startServer() {
       return;
     }
 
-    const profile = store.tables.profiles.find(
-      (p) => p.email.toLowerCase() === email && p.role === 'student'
+    const matchingEmailProfile = store.tables.profiles.find(
+      (p) => p.email.toLowerCase() === email
     );
+    if (matchingEmailProfile && matchingEmailProfile.role === 'admin') {
+      res.status(403).json({
+        error: 'This email is registered as an Administrator. Please switch to the Admin Portal tab to sign in.',
+      });
+      return;
+    }
+
+    const profile =
+      matchingEmailProfile?.role === 'student' ? matchingEmailProfile : undefined;
 
     if (!profile || !verifyPassword(password, profile.passwordHash)) {
       res.status(401).json({ error: 'Invalid student email or password.' });
@@ -181,6 +193,32 @@ async function startServer() {
       title: 'Signed in to Student Learning Portal',
       subject: 'Account',
     });
+
+    const token = createSessionToken(profile.id, profile.role);
+    res.json({
+      token,
+      user: sanitizeProfile(profile),
+    });
+  });
+
+  app.post('/api/auth/sandbox-session', (req, res) => {
+    const requestedRole = req.body?.role === 'admin' ? 'admin' : 'student';
+    if (requestedRole === 'admin' && isProductionAdminLocked()) {
+      res.status(403).json({
+        error: 'Quick admin access is disabled when production ADMIN_PASSWORD is set. Please sign in with your administrator credentials.',
+      });
+      return;
+    }
+
+    const profile = getOrCreateSandboxProfile(requestedRole);
+    if (requestedRole === 'student') {
+      store.logActivity({
+        userId: profile.id,
+        activityType: 'login',
+        title: 'Entered Student Learning Portal (Local NoSQL Session)',
+        subject: 'Account',
+      });
+    }
 
     const token = createSessionToken(profile.id, profile.role);
     res.json({
@@ -1158,9 +1196,18 @@ async function startServer() {
     const email = String(req.body?.email ?? '').trim().toLowerCase();
     const password = String(req.body?.password ?? '');
 
-    const admin = store.tables.profiles.find(
-      (p) => p.email.toLowerCase() === email && p.role === 'admin'
+    const matchingProfile = store.tables.profiles.find(
+      (p) => p.email.toLowerCase() === email
     );
+    if (matchingProfile && matchingProfile.role === 'student') {
+      res.status(403).json({
+        error: 'This email belongs to a Student account. Please switch to the Student Sign In tab.',
+      });
+      return;
+    }
+
+    const admin =
+      matchingProfile?.role === 'admin' ? matchingProfile : undefined;
 
     if (!admin || !verifyPassword(password, admin.passwordHash)) {
       res.status(401).json({ error: 'Invalid administrator credentials.' });
@@ -1257,6 +1304,9 @@ async function startServer() {
       subjects: store.tables.subjects,
       topics: store.tables.topics,
       settings: store.tables.platform_settings,
+      admins: store.tables.profiles
+        .filter((p) => p.role === 'admin')
+        .map(sanitizeProfile),
     };
 
     res.json(overview);
@@ -1281,8 +1331,70 @@ async function startServer() {
       student: sanitizeProfile(st),
       attempts,
       notesCount: notes.length,
+      notes: notes.map((n) => ({
+        id: n.id,
+        title: n.title,
+        subject: n.subject,
+        noteType: n.noteType,
+        updatedAt: n.updatedAt,
+      })),
       activities,
     });
+  });
+
+  app.post('/api/admin/students', requireAdmin, (req, res) => {
+    const fullName = String(req.body?.fullName ?? '').trim();
+    const email = String(req.body?.email ?? '').trim().toLowerCase();
+    const password = String(req.body?.password ?? '');
+    const academicLevel =
+      String(req.body?.academicLevel ?? '').trim() || 'B.Tech CSE - 5th Semester';
+
+    if (fullName.length < 2) {
+      res.status(400).json({ error: 'Student full name must be at least 2 characters.' });
+      return;
+    }
+    if (!isValidEmail(email)) {
+      res.status(400).json({ error: 'A valid student email address is required.' });
+      return;
+    }
+    if (password.length < 6) {
+      res.status(400).json({ error: 'Student password must be at least 6 characters.' });
+      return;
+    }
+    if (store.tables.profiles.some((p) => p.email.toLowerCase() === email)) {
+      res.status(409).json({ error: 'An account with this email already exists.' });
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const student: StoredProfile = {
+      id: generateId(),
+      email,
+      passwordHash: hashPassword(password),
+      fullName,
+      avatarUrl: '',
+      academicLevel,
+      preferredSubjects: [
+        'Data Structures & Algorithms',
+        'Operating Systems',
+        'Database Management Systems',
+      ],
+      role: 'student',
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    store.tables.profiles.push(student);
+    store.commit();
+    store.logActivity({
+      userId: student.id,
+      activityType: 'login',
+      title: 'Student account enrolled by Administrator',
+      subject: 'Account',
+    });
+
+    res.status(201).json({ student: sanitizeProfile(student) });
   });
 
   app.patch('/api/admin/students/:id/status', requireAdmin, (req, res) => {
@@ -1297,6 +1409,148 @@ async function startServer() {
     st.updatedAt = new Date().toISOString();
     store.commit();
     res.json({ student: sanitizeProfile(st) });
+  });
+
+  app.patch('/api/admin/students/:id/password', requireAdmin, (req, res) => {
+    const st = store.tables.profiles.find(
+      (p) => p.id === req.params.id && p.role === 'student'
+    );
+    if (!st) {
+      res.status(404).json({ error: 'Student not found.' });
+      return;
+    }
+    const newPassword = String(req.body?.newPassword ?? '');
+    if (newPassword.length < 6) {
+      res.status(400).json({ error: 'New student password must be at least 6 characters.' });
+      return;
+    }
+    st.passwordHash = hashPassword(newPassword);
+    st.updatedAt = new Date().toISOString();
+    store.commit();
+    res.json({ message: `Password updated for ${st.fullName}.` });
+  });
+
+  app.delete('/api/admin/students/:id', requireAdmin, (req, res) => {
+    const idx = store.tables.profiles.findIndex(
+      (p) => p.id === req.params.id && p.role === 'student'
+    );
+    if (idx === -1) {
+      res.status(404).json({ error: 'Student not found.' });
+      return;
+    }
+    const studentId = store.tables.profiles[idx].id;
+    store.tables.profiles.splice(idx, 1);
+
+    const quizIds = new Set(
+      store.tables.quizzes.filter((q) => q.userId === studentId).map((q) => q.id)
+    );
+    const attemptIds = new Set(
+      store.tables.quiz_attempts
+        .filter((a) => a.userId === studentId)
+        .map((a) => a.id)
+    );
+
+    store.tables.chat_conversations = store.tables.chat_conversations.filter(
+      (c) => c.userId !== studentId
+    );
+    store.tables.chat_messages = store.tables.chat_messages.filter(
+      (m) => m.userId !== studentId
+    );
+    store.tables.saved_notes = store.tables.saved_notes.filter(
+      (n) => n.userId !== studentId
+    );
+    store.tables.quizzes = store.tables.quizzes.filter(
+      (q) => q.userId !== studentId
+    );
+    store.tables.quiz_questions = store.tables.quiz_questions.filter(
+      (qq) => !quizIds.has(qq.quizId)
+    );
+    store.tables.quiz_attempts = store.tables.quiz_attempts.filter(
+      (qa) => qa.userId !== studentId
+    );
+    store.tables.quiz_answers = store.tables.quiz_answers.filter(
+      (ans) => !attemptIds.has(ans.attemptId)
+    );
+    store.tables.user_activity = store.tables.user_activity.filter(
+      (act) => act.userId !== studentId
+    );
+
+    store.commit();
+    res.json({ success: true });
+  });
+
+  app.post('/api/admin/admins', requireAdmin, (req, res) => {
+    const fullName = String(req.body?.fullName ?? '').trim();
+    const email = String(req.body?.email ?? '').trim().toLowerCase();
+    const password = String(req.body?.password ?? '');
+
+    if (fullName.length < 2 || !isValidEmail(email) || password.length < 8) {
+      res.status(400).json({
+        error: 'Administrator name, valid email, and password (minimum 8 characters) are required.',
+      });
+      return;
+    }
+    if (store.tables.profiles.some((p) => p.email.toLowerCase() === email)) {
+      res.status(409).json({ error: 'An account with this email already exists.' });
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const newAdmin: StoredProfile = {
+      id: generateId(),
+      email,
+      passwordHash: hashPassword(password),
+      fullName,
+      avatarUrl: '',
+      academicLevel: 'Faculty / Administration',
+      preferredSubjects: [],
+      role: 'admin',
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    store.tables.profiles.push(newAdmin);
+    store.commit();
+    res.status(201).json({ admin: sanitizeProfile(newAdmin) });
+  });
+
+  app.put('/api/admin/account', requireAdmin, (req: AuthenticatedRequest, res) => {
+    const admin = req.authUser!;
+    const fullName = String(req.body?.fullName ?? admin.fullName).trim();
+    const email = String(req.body?.email ?? admin.email).trim().toLowerCase();
+    const newPassword = String(req.body?.newPassword ?? '');
+
+    if (fullName.length < 2 || !isValidEmail(email)) {
+      res.status(400).json({ error: 'Valid administrator name and email are required.' });
+      return;
+    }
+
+    const duplicate = store.tables.profiles.find(
+      (p) => p.email.toLowerCase() === email && p.id !== admin.id
+    );
+    if (duplicate) {
+      res.status(409).json({ error: 'Another account already uses that email address.' });
+      return;
+    }
+
+    if (newPassword && newPassword.length < 8) {
+      res.status(400).json({ error: 'New admin password must be at least 8 characters.' });
+      return;
+    }
+
+    admin.fullName = fullName;
+    admin.email = email;
+    if (newPassword) {
+      admin.passwordHash = hashPassword(newPassword);
+    }
+    admin.updatedAt = new Date().toISOString();
+    store.commit();
+
+    res.json({
+      user: sanitizeProfile(admin),
+      message: 'Administrator credentials updated successfully.',
+    });
   });
 
   app.post('/api/admin/subjects', requireAdmin, (req, res) => {

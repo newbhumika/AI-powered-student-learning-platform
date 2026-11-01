@@ -31,9 +31,25 @@ const AppRouter: React.FC = () => {
 
   if (view === 'workspace' && user) {
     if (user.role === 'admin') {
-      return <AdminPortal onExitToHome={() => setView('landing')} />;
+      return (
+        <AdminPortal
+          onExitToHome={() => setView('landing')}
+          onSwitchToStudentPortal={() => {
+            setAuthMode('login');
+            setView('auth');
+          }}
+        />
+      );
     }
-    return <DashboardLayout onBackToLanding={() => setView('landing')} />;
+    return (
+      <DashboardLayout
+        onBackToLanding={() => setView('landing')}
+        onSwitchToAdminPortal={() => {
+          setAuthMode('admin');
+          setView('auth');
+        }}
+      />
+    );
   }
 
   if (view === 'auth') {
@@ -49,11 +65,11 @@ const AppRouter: React.FC = () => {
   return (
     <LandingPage
       onNavigateAuth={(mode) => {
-        if (user && mode !== 'admin') {
+        if (mode === 'admin' && user?.role === 'admin') {
           setView('workspace');
           return;
         }
-        if (user && user.role === 'admin' && mode === 'admin') {
+        if (mode === 'login' && user?.role === 'student') {
           setView('workspace');
           return;
         }

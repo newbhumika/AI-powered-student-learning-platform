@@ -6,6 +6,7 @@ export interface PublicPlatformInfo {
   institutionName: string;
   allowRegistration: boolean;
   aiConfigured: boolean;
+  sandboxQuickAccess?: boolean;
   subjects: Subject[];
   topics: Topic[];
 }
@@ -26,6 +27,7 @@ const defaultPublicInfo: PublicPlatformInfo = {
   institutionName: 'Department of Computer Science & Engineering',
   allowRegistration: true,
   aiConfigured: true,
+  sandboxQuickAccess: true,
   subjects: [],
   topics: [],
 };
