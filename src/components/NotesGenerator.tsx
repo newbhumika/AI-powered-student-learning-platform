@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import {
   AlertCircle,
@@ -10,6 +10,7 @@ import {
   FileText,
   Loader2,
   Save,
+  Search,
   Trash2,
   X,
 } from 'lucide-react';
@@ -22,6 +23,7 @@ import type {
   StructuredNoteContent,
   TopicExplanationContent,
 } from '../shared/types.ts';
+import type { PortalSearchDispatch } from './DashboardLayout.tsx';
 
 const NOTE_TYPES: {
   id: Exclude<NoteType, 'topic_explanation'>;
@@ -33,7 +35,13 @@ const NOTE_TYPES: {
   { id: 'bullet', label: 'Bullet-Point Revision' },
 ];
 
-export const NotesGenerator: React.FC = () => {
+interface NotesGeneratorProps {
+  autoNotesRequest?: PortalSearchDispatch | null;
+}
+
+export const NotesGenerator: React.FC<NotesGeneratorProps> = ({
+  autoNotesRequest,
+}) => {
   const { user, publicInfo } = useAuth();
 
   // Generator inputs
@@ -46,6 +54,7 @@ export const NotesGenerator: React.FC = () => {
 
   // Active note view / editor
   const [savedNotes, setSavedNotes] = useState<SavedNote[]>([]);
+  const [libraryFilter, setLibraryFilter] = useState('');
   const [activeNote, setActiveNote] = useState<{
     id?: string;
     title: string;
@@ -65,6 +74,7 @@ export const NotesGenerator: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const lastHandledNonce = useRef<number | null>(null);
 
   const fetchNotes = () => {
     apiRequest<{ notes: SavedNote[] }>('/api/notes')
@@ -78,10 +88,17 @@ export const NotesGenerator: React.FC = () => {
     fetchNotes();
   }, []);
 
-  const handleGenerate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!topic.trim()) return;
+  const runNotesGeneration = async (
+    targetTopic: string,
+    targetSubject?: string
+  ) => {
+    const cleanTopic = targetTopic.trim();
+    if (!cleanTopic) return;
+    const effectiveSubject =
+      (targetSubject ?? subject).trim() || 'Computer Science & Engineering';
 
+    setTopic(cleanTopic);
+    setSubject(effectiveSubject);
     setGenerating(true);
     setError(null);
     setIsEditing(false);
@@ -92,16 +109,16 @@ export const NotesGenerator: React.FC = () => {
       }>('/api/ai/generate-notes', {
         method: 'POST',
         body: JSON.stringify({
-          subject,
-          topic,
+          subject: effectiveSubject,
+          topic: cleanTopic,
           noteType,
         }),
       });
 
       setActiveNote({
-        title: res.structured.heading || topic,
-        subject,
-        topic,
+        title: res.structured.heading || cleanTopic,
+        subject: effectiveSubject,
+        topic: cleanTopic,
         noteType,
         structuredContent: res.structured,
         markdownContent: res.markdown,
@@ -113,6 +130,22 @@ export const NotesGenerator: React.FC = () => {
     } finally {
       setGenerating(false);
     }
+  };
+
+  useEffect(() => {
+    if (
+      autoNotesRequest &&
+      autoNotesRequest.nonce !== lastHandledNonce.current
+    ) {
+      lastHandledNonce.current = autoNotesRequest.nonce;
+      void runNotesGeneration(autoNotesRequest.query, autoNotesRequest.subject);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoNotesRequest]);
+
+  const handleGenerate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await runNotesGeneration(topic, subject);
   };
 
   const handleSaveNewNote = async () => {
@@ -205,6 +238,14 @@ export const NotesGenerator: React.FC = () => {
     }
   };
 
+  const filteredSavedNotes = savedNotes.filter(
+    (n) =>
+      !libraryFilter.trim() ||
+      n.title.toLowerCase().includes(libraryFilter.trim().toLowerCase()) ||
+      n.subject.toLowerCase().includes(libraryFilter.trim().toLowerCase()) ||
+      n.topic.toLowerCase().includes(libraryFilter.trim().toLowerCase())
+  );
+
   return (
     <div className="space-y-6">
       {/* Notes Generator Form */}
@@ -217,7 +258,7 @@ export const NotesGenerator: React.FC = () => {
             AI Study Notes & Handout Builder
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Generate structured academic notes, edit and save them to your private library, or export formatted PDFs.
+            Search any topic to generate structured academic notes, edit and save them to your private library, or export formatted PDFs.
           </p>
         </div>
 
@@ -229,7 +270,6 @@ export const NotesGenerator: React.FC = () => {
             <input
               type="text"
               list="notes-subjects"
-              required
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
               className="w-full px-3.5 py-2.5 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#0A1013] text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-600"
@@ -292,6 +332,32 @@ export const NotesGenerator: React.FC = () => {
             )}
           </button>
         </div>
+
+        {publicInfo.topics.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 text-xs pt-0.5">
+            <span className="text-slate-500 dark:text-slate-400">
+              Instant note topics:
+            </span>
+            {publicInfo.topics.slice(0, 4).map((t) => {
+              const parentSubj = publicInfo.subjects.find(
+                (s) => s.id === t.subjectId
+              );
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  disabled={generating}
+                  onClick={() =>
+                    void runNotesGeneration(t.title, parentSubj?.name || subject)
+                  }
+                  className="px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-800 hover:border-teal-600/60 hover:bg-teal-600/5 text-slate-700 dark:text-slate-300 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {t.title}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </form>
 
       {error && (
@@ -306,19 +372,32 @@ export const NotesGenerator: React.FC = () => {
         {/* Saved Notes Sidebar */}
         <div className="lg:col-span-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#10191E] p-5 flex flex-col max-h-[650px]">
           <h3 className="font-display text-sm font-semibold text-slate-900 dark:text-white mb-1">
-            Saved Notes Library ({savedNotes.length})
+            Saved Notes Library ({filteredSavedNotes.length})
           </h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
             Private notes and saved topic explanations
           </p>
 
+          <div className="relative mb-3">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={libraryFilter}
+              onChange={(e) => setLibraryFilter(e.target.value)}
+              placeholder="Search saved notes..."
+              className="w-full pl-8 pr-2.5 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0A1013] text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-600"
+            />
+          </div>
+
           <div className="flex-1 overflow-y-auto space-y-2">
-            {savedNotes.length === 0 ? (
+            {filteredSavedNotes.length === 0 ? (
               <p className="text-xs text-slate-500 dark:text-slate-400 py-8 text-center">
-                No saved notes yet. Generate study notes above and click Save Note.
+                {savedNotes.length === 0
+                  ? 'No saved notes yet. Generate study notes above and click Save Note.'
+                  : 'No saved notes match your search.'}
               </p>
             ) : (
-              savedNotes.map((n) => {
+              filteredSavedNotes.map((n) => {
                 const isSelected = activeNote?.id === n.id;
                 return (
                   <div
@@ -405,7 +484,7 @@ export const NotesGenerator: React.FC = () => {
                 No study note selected
               </p>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-sm">
-                Enter any syllabus topic above to generate structured revision notes, or click a saved note from your library on the left.
+                Enter any syllabus topic above—or click an instant topic—to generate structured revision notes, or click a saved note from your library on the left.
               </p>
             </div>
           ) : isEditing ? (

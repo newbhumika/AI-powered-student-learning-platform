@@ -7,6 +7,7 @@ import {
   LineChart as LineChartIcon,
   MessageSquare,
   AlertCircle,
+  Search,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -32,15 +33,26 @@ export type StudentTab =
 
 interface StudentDashboardProps {
   onNavigateTab: (tab: StudentTab) => void;
+  onQuickSearch: (
+    query: string,
+    target?: 'assistant' | 'explainer' | 'quiz' | 'notes',
+    subject?: string
+  ) => void;
 }
 
 export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   onNavigateTab,
+  onQuickSearch,
 }) => {
   const { user, publicInfo } = useAuth();
   const [data, setData] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [searchInput, setSearchInput] = useState('');
+  const [searchTarget, setSearchTarget] = useState<
+    'explainer' | 'assistant' | 'quiz' | 'notes'
+  >('explainer');
 
   useEffect(() => {
     let active = true;
@@ -67,10 +79,17 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
     };
   }, []);
 
+  const handleDashboardSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchInput.trim()) return;
+    onQuickSearch(searchInput.trim(), searchTarget);
+  };
+
   if (loading) {
     return (
       <div className="space-y-6 animate-pulse">
         <div className="h-20 rounded-xl bg-slate-200 dark:bg-slate-800/70" />
+        <div className="h-32 rounded-xl bg-slate-200 dark:bg-slate-800/70" />
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {[1, 2, 3, 4].map((i) => (
             <div
@@ -129,6 +148,87 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
           <span>Ask AI Study Tutor</span>
           <ArrowRight className="w-4 h-4" />
         </button>
+      </div>
+
+      {/* Instant Academic Topic & Question Search Hub */}
+      <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#10191E] p-5 sm:p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h2 className="font-display text-base font-bold text-slate-900 dark:text-white">
+              Instant Academic Search & AI Generator
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Enter any CSE concept, syllabus topic, or question and click Search to generate live results immediately.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-1.5">
+            {[
+              { id: 'explainer' as const, label: 'Explain Topic' },
+              { id: 'assistant' as const, label: 'Ask Tutor' },
+              { id: 'quiz' as const, label: 'Start MCQ Quiz' },
+              { id: 'notes' as const, label: 'Study Notes' },
+            ].map((modeOpt) => (
+              <button
+                key={modeOpt.id}
+                type="button"
+                onClick={() => setSearchTarget(modeOpt.id)}
+                className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer ${
+                  searchTarget === modeOpt.id
+                    ? 'bg-teal-700 dark:bg-teal-600 text-white'
+                    : 'bg-slate-100 dark:bg-[#0A1013] text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                {modeOpt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <form
+          onSubmit={handleDashboardSearch}
+          className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5"
+        >
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Search topic or question (e.g., Banker's Algorithm, BCNF Normalization, AVL Tree Rotations)..."
+              className="w-full pl-10 pr-4 py-2.5 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#0A1013] text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-600"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={!searchInput.trim()}
+            className="px-5 py-2.5 rounded-lg bg-teal-700 hover:bg-teal-600 dark:bg-teal-600 dark:hover:bg-teal-500 disabled:opacity-50 text-white text-sm font-semibold inline-flex items-center justify-center gap-2 transition-colors cursor-pointer shrink-0"
+          >
+            <Search className="w-4 h-4" />
+            <span>Search</span>
+          </button>
+        </form>
+
+        {publicInfo.topics.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 text-xs pt-0.5">
+            <span className="text-slate-500 dark:text-slate-400">
+              One-click syllabus search:
+            </span>
+            {publicInfo.topics.slice(0, 4).map((t) => {
+              const subj = publicInfo.subjects.find((s) => s.id === t.subjectId);
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => onQuickSearch(t.title, searchTarget, subj?.name)}
+                  className="px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-800 hover:border-teal-600/60 hover:bg-teal-600/5 text-slate-700 dark:text-slate-300 transition-colors cursor-pointer"
+                >
+                  {t.title}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Real Database KPI Strip */}
@@ -331,7 +431,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                 No study sessions recorded yet
               </p>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-xs">
-                Ask your first question in the AI Study Assistant or generate a topic quiz to start building your timeline.
+                Use the Search bar above or click any AI module to generate explanations, quizzes, and revision notes.
               </p>
               <button
                 type="button"

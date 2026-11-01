@@ -1,4 +1,10 @@
-import { GoogleGenAI, Type } from '@google/genai';
+import {
+  GoogleGenAI,
+  ThinkingLevel,
+  Type,
+  type GenerateContentParameters,
+  type GenerateContentResponse,
+} from '@google/genai';
 import type {
   ChatMode,
   NoteType,
@@ -20,6 +26,7 @@ function resolveGeminiApiKey(): string | undefined {
   const candidates = [
     process.env.GEMINI_API_KEY,
     process.env.GOOGLE_API_KEY,
+    process.env.API_KEY,
     process.env.VITE_GEMINI_API_KEY,
   ];
   for (const raw of candidates) {
@@ -40,11 +47,11 @@ export function isAiConfigured(): boolean {
   return Boolean(resolveGeminiApiKey());
 }
 
-function getGenAIClient(): GoogleGenAI {
+function getGenAIClient(timeoutMs = 25000): GoogleGenAI {
   const apiKey = resolveGeminiApiKey();
   if (!apiKey) {
     throw new AIConfigError(
-      'AI backend is awaiting server configuration. Add GEMINI_API_KEY in Vercel Project Settings -> Environment Variables (or server .env / AI Studio Secrets) and redeploy.',
+      'AI backend is awaiting server configuration. Please ensure GEMINI_API_KEY is set in Settings > Secrets.',
       503
     );
   }
@@ -52,11 +59,84 @@ function getGenAIClient(): GoogleGenAI {
   return new GoogleGenAI({
     apiKey,
     httpOptions: {
+      timeout: Math.max(10000, timeoutMs),
       headers: {
         'User-Agent': 'aistudio-build',
       },
     },
   });
+}
+
+/**
+ * Executes a Gemini generation request using fast low-latency primary model
+ * ('gemini-3.1-flash-lite') with automatic fallback to 'gemini-3.8-flash'
+ * if transient upstream timeouts or 5xx errors occur.
+ */
+async function generateWithFallback(
+  params: Omit<GenerateContentParameters, 'model'>
+): Promise<GenerateContentResponse> {
+  const modelChain: {
+    model: string;
+    timeoutMs: number;
+    extraConfig?: Record<string, unknown>;
+  }[] = [
+    {
+      model: 'gemini-3.1-flash-lite',
+      timeoutMs: 25000,
+    },
+    {
+      model: 'gemini-3.8-flash',
+      timeoutMs: 28000,
+      extraConfig: {
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+      },
+    },
+  ];
+
+  let lastError: unknown = null;
+
+  for (const candidate of modelChain) {
+    try {
+      const ai = getGenAIClient(candidate.timeoutMs);
+      const mergedConfig = {
+        ...(params.config ?? {}),
+        ...(candidate.extraConfig ?? {}),
+      };
+      const response = await ai.models.generateContent({
+        model: candidate.model,
+        contents: params.contents,
+        config: mergedConfig,
+      });
+
+      if (response.text && response.text.trim().length > 0) {
+        return response;
+      }
+      lastError = new Error(`Empty response from model ${candidate.model}`);
+    } catch (err) {
+      lastError = err;
+      if (err instanceof AIConfigError) {
+        throw err;
+      }
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('API_KEY_INVALID') || msg.includes('PERMISSION_DENIED')) {
+        throw err;
+      }
+      console.warn(
+        `[AI Fallback] Model ${candidate.model} failed (${msg.slice(0, 140)}). Trying next candidate...`
+      );
+    }
+  }
+
+  throw lastError ?? new Error('All AI model candidates failed to respond.');
+}
+
+function parseJsonResponse<T>(rawText: string | undefined, fallbackJson: string): T {
+  const cleaned = (rawText ?? fallbackJson)
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
+  return JSON.parse(cleaned || fallbackJson) as T;
 }
 
 export function normalizeAiError(err: unknown): { status: number; message: string } {
@@ -80,12 +160,19 @@ export function normalizeAiError(err: unknown): { status: number; message: strin
     return {
       status: 429,
       message:
-        'AI API quota or rate limit reached. Please wait a moment and try your request again.',
+        'AI API quota or rate limit reached. Please wait a few seconds and try your search again.',
+    };
+  }
+  if (rawMessage.includes('DEADLINE_EXCEEDED') || rawMessage.includes('504')) {
+    return {
+      status: 504,
+      message:
+        'The AI model took too long to respond. Please click search/generate once more to retry.',
     };
   }
   return {
     status: 500,
-    message: 'Unable to complete AI generation right now. Please retry shortly.',
+    message: 'Unable to complete AI generation right now. Please retry your request.',
   };
 }
 
@@ -111,7 +198,6 @@ export async function generateStudyChatReply(params: {
   mode: ChatMode;
   academicLevel: string;
 }): Promise<string> {
-  const ai = getGenAIClient();
   const modeDirective = MODE_INSTRUCTIONS[params.mode] || MODE_INSTRUCTIONS.detailed;
 
   const recentTurns = params.history.slice(-10);
@@ -126,8 +212,7 @@ export async function generateStudyChatReply(params: {
     },
   ];
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-3.8-flash',
+  const response = await generateWithFallback({
     contents: formattedContents,
     config: {
       systemInstruction: `You are an expert, encouraging academic professor and AI Study Tutor for ${params.academicLevel} students.
@@ -154,10 +239,7 @@ export async function generateTopicExplanation(params: {
   academicLevel: string;
   difficulty: string;
 }): Promise<{ structured: TopicExplanationContent; markdown: string }> {
-  const ai = getGenAIClient();
-
-  const response = await ai.models.generateContent({
-    model: 'gemini-3.8-flash',
+  const response = await generateWithFallback({
     contents: `Create a thorough academic topic explanation for:
 Subject: ${params.subject}
 Topic: ${params.topic}
@@ -238,10 +320,9 @@ Explanation Difficulty: ${params.difficulty}`,
     },
   });
 
-  const parsed = JSON.parse((response.text ?? '{}').trim()) as Omit<
-    TopicExplanationContent,
-    'subject' | 'topic' | 'academicLevel' | 'difficulty'
-  >;
+  const parsed = parseJsonResponse<
+    Omit<TopicExplanationContent, 'subject' | 'topic' | 'academicLevel' | 'difficulty'>
+  >(response.text, '{}');
 
   const structured: TopicExplanationContent = {
     subject: params.subject,
@@ -250,11 +331,13 @@ Explanation Difficulty: ${params.difficulty}`,
     difficulty: params.difficulty,
     introduction: parsed.introduction || '',
     detailedExplanation: parsed.detailedExplanation || '',
-    importantPoints: parsed.importantPoints || [],
-    practicalExamples: parsed.practicalExamples || [],
-    keyDefinitions: parsed.keyDefinitions || [],
+    importantPoints: Array.isArray(parsed.importantPoints) ? parsed.importantPoints : [],
+    practicalExamples: Array.isArray(parsed.practicalExamples)
+      ? parsed.practicalExamples
+      : [],
+    keyDefinitions: Array.isArray(parsed.keyDefinitions) ? parsed.keyDefinitions : [],
     revisionSummary: parsed.revisionSummary || '',
-    faqs: parsed.faqs || [],
+    faqs: Array.isArray(parsed.faqs) ? parsed.faqs : [],
   };
 
   const markdown = [
@@ -308,10 +391,7 @@ export async function generateQuizQuestions(params: {
     explanation: string;
   }[]
 > {
-  const ai = getGenAIClient();
-
-  const response = await ai.models.generateContent({
-    model: 'gemini-3.8-flash',
+  const response = await generateWithFallback({
     contents: `Generate exactly ${params.questionCount} multiple-choice questions (MCQs) on:
 Subject: ${params.subject}
 Topic: ${params.topic}
@@ -353,12 +433,14 @@ Rules:
     },
   });
 
-  const parsed = JSON.parse((response.text ?? '[]').trim()) as {
-    questionText: string;
-    options: string[];
-    correctOptionIndex: number;
-    explanation: string;
-  }[];
+  const parsed = parseJsonResponse<
+    {
+      questionText: string;
+      options: string[];
+      correctOptionIndex: number;
+      explanation: string;
+    }[]
+  >(response.text, '[]');
 
   if (!Array.isArray(parsed) || parsed.length === 0) {
     throw new Error('Failed to generate valid quiz questions.');
@@ -405,11 +487,9 @@ export async function generateStudyNotes(params: {
   noteType: Exclude<NoteType, 'topic_explanation'>;
   academicLevel: string;
 }): Promise<{ structured: StructuredNoteContent; markdown: string }> {
-  const ai = getGenAIClient();
   const styleDesc = NOTE_TYPE_DESCRIPTIONS[params.noteType] || NOTE_TYPE_DESCRIPTIONS.detailed;
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-3.8-flash',
+  const response = await generateWithFallback({
     contents: `Generate structured academic study notes for:
 Subject: ${params.subject}
 Topic: ${params.topic}
@@ -474,7 +554,7 @@ Note Format: ${styleDesc}`,
     },
   });
 
-  const structured = JSON.parse((response.text ?? '{}').trim()) as StructuredNoteContent;
+  const structured = parseJsonResponse<StructuredNoteContent>(response.text, '{}');
 
   const markdown = [
     `# ${structured.heading || params.topic}`,

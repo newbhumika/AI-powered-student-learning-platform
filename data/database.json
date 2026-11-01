@@ -3,7 +3,7 @@
     {
       "id": "95ca4b69-6767-4885-84ab-52d798e9519e",
       "email": "hksshukla166@gmail.com",
-      "passwordHash": "13e4ab42c52e3e1a63969ecb5d53a034:1a2cf37be93e18acac46cb55af69aa141ca4532db295bbde1b6f4452bd9a0d1d2736f66d2d620ebd86645ff911263640865667d3b5553b833ed16b5f18875962",
+      "passwordHash": "7f2086fc1cb2339e29d3de7d91dfadfe:bca4933b964b1689e545fb64a0a29943ad30b586e7a56df312848f1c10ad0e285c0673a9aae67fb6f3221eb1c6b422c55a5d41db717093d44b5e9570f3e845b6",
       "fullName": "Platform Administrator",
       "avatarUrl": "",
       "academicLevel": "Faculty / Administration",
@@ -11,12 +11,12 @@
       "role": "admin",
       "isActive": true,
       "createdAt": "2026-11-01T18:37:52.870Z",
-      "updatedAt": "2026-11-01T19:00:29.980Z"
+      "updatedAt": "2026-11-01T19:34:13.070Z"
     },
     {
-      "id": "b20dc6fc-1ab2-4d80-a8e3-65e35693673e",
+      "id": "d636d2bf-51d0-4074-b5b0-59ab6ce88cc6",
       "email": "aarav.sharma@university.edu",
-      "passwordHash": "f4de09265feaa0b6cab5935f1f6d0653:53d727b9dfae1cab2291e58d776ecdbcab41907fc739fc24819f7f565ee01ee5165656b2736b4eab545b9c98abd8c80f290fed77cdeb9c0eab7bdad31fcd8bb3",
+      "passwordHash": "b479bded4609d6f4d1e3259551fbf388:9e765e93000fa4e6ab7c5de1dd99e32d54fe3115c072fa4285707160d90f8ba96d879a9c8f613c9c3ba4d9340001b33de12edfabfd9a9b3ee45b43c631edbc6e",
       "fullName": "Aarav Sharma",
       "avatarUrl": "",
       "academicLevel": "B.Tech CSE - 5th Semester",
@@ -27,8 +27,8 @@
       ],
       "role": "student",
       "isActive": true,
-      "createdAt": "2026-11-01T19:00:29.868Z",
-      "updatedAt": "2026-11-01T19:00:29.868Z"
+      "createdAt": "2026-11-01T19:34:50.658Z",
+      "updatedAt": "2026-11-01T19:34:50.658Z"
     }
   ],
   "subjects": [
@@ -156,12 +156,12 @@
   "quiz_answers": [],
   "user_activity": [
     {
-      "id": "ccd853ed-2ffb-4eed-a9c5-cf3175bb70f0",
-      "userId": "b20dc6fc-1ab2-4d80-a8e3-65e35693673e",
+      "id": "553aeedc-9b1f-4671-b04b-8dbff5e0a38e",
+      "userId": "d636d2bf-51d0-4074-b5b0-59ab6ce88cc6",
       "activityType": "login",
       "title": "Entered Student Learning Portal",
       "subject": "Account",
-      "createdAt": "2026-11-01T19:00:29.917Z"
+      "createdAt": "2026-11-01T19:34:50.708Z"
     }
   ],
   "platform_settings": [

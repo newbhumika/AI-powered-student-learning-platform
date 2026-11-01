@@ -1,20 +1,27 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   AlertCircle,
   BookmarkCheck,
   BookmarkPlus,
   Download,
   Loader2,
-  BookOpen,
+  Search,
 } from 'lucide-react';
 import { apiRequest } from '../lib/api.ts';
 import { downloadStudyNotesPdf } from '../lib/pdfExport.ts';
 import { useAuth } from '../context/AuthContext.tsx';
 import type { TopicExplanationContent } from '../shared/types.ts';
+import type { PortalSearchDispatch } from './DashboardLayout.tsx';
 
 const DIFFICULTIES = ['Beginner', 'Intermediate', 'Advanced / University Exam'];
 
-export const TopicExplainer: React.FC = () => {
+interface TopicExplainerProps {
+  autoSearchRequest?: PortalSearchDispatch | null;
+}
+
+export const TopicExplainer: React.FC<TopicExplainerProps> = ({
+  autoSearchRequest,
+}) => {
   const { user, publicInfo } = useAuth();
   const [subject, setSubject] = useState(
     publicInfo.subjects[0]?.name || 'Operating Systems'
@@ -33,19 +40,33 @@ export const TopicExplainer: React.FC = () => {
   } | null>(null);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+  const lastHandledNonce = useRef<number | null>(null);
 
   const suggestedTopics = publicInfo.topics.filter((t) => {
     const subjObj = publicInfo.subjects.find((s) => s.id === t.subjectId);
     return !subjObj || subjObj.name.toLowerCase() === subject.toLowerCase();
   });
 
-  const handleGenerate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!subject.trim() || !topic.trim()) return;
+  const displayTopics =
+    suggestedTopics.length > 0 ? suggestedTopics : publicInfo.topics;
 
+  const runExplanation = async (
+    targetTopic: string,
+    targetSubject?: string,
+    targetDifficulty?: string
+  ) => {
+    const cleanTopic = targetTopic.trim();
+    if (!cleanTopic) return;
+    const effectiveSubject =
+      (targetSubject ?? subject).trim() || 'Computer Science & Engineering';
+    const effectiveDifficulty = targetDifficulty ?? difficulty;
+
+    setTopic(cleanTopic);
+    setSubject(effectiveSubject);
     setLoading(true);
     setError(null);
     setSaved(false);
+
     try {
       const res = await apiRequest<{
         structured: TopicExplanationContent;
@@ -53,10 +74,10 @@ export const TopicExplainer: React.FC = () => {
       }>('/api/ai/explain-topic', {
         method: 'POST',
         body: JSON.stringify({
-          subject,
-          topic,
-          academicLevel,
-          difficulty,
+          subject: effectiveSubject,
+          topic: cleanTopic,
+          academicLevel: academicLevel.trim() || 'B.Tech CSE - 5th Semester',
+          difficulty: effectiveDifficulty,
         }),
       });
       setResult(res);
@@ -67,6 +88,22 @@ export const TopicExplainer: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  useEffect(() => {
+    if (
+      autoSearchRequest &&
+      autoSearchRequest.nonce !== lastHandledNonce.current
+    ) {
+      lastHandledNonce.current = autoSearchRequest.nonce;
+      void runExplanation(autoSearchRequest.query, autoSearchRequest.subject);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSearchRequest]);
+
+  const handleGenerate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await runExplanation(topic, subject, difficulty);
   };
 
   const handleSaveExplanation = async () => {
@@ -101,10 +138,10 @@ export const TopicExplainer: React.FC = () => {
       >
         <div>
           <h2 className="font-display text-lg font-bold text-slate-900 dark:text-white">
-            AI Topic Explainer
+            AI Topic Explainer & Concept Search
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Enter any syllabus topic to receive a structured breakdown with definitions, worked examples, revision summary, and viva FAQs.
+            Search any syllabus topic—or click a quick topic below—to receive a structured 7-part breakdown with definitions, worked examples, revision summary, and viva FAQs.
           </p>
         </div>
 
@@ -116,7 +153,6 @@ export const TopicExplainer: React.FC = () => {
             <input
               type="text"
               list="explainer-subjects"
-              required
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
               placeholder="e.g., Operating Systems"
@@ -131,7 +167,7 @@ export const TopicExplainer: React.FC = () => {
 
           <div>
             <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-              Topic Name
+              Search Topic Name
             </label>
             <input
               type="text"
@@ -149,7 +185,6 @@ export const TopicExplainer: React.FC = () => {
             </label>
             <input
               type="text"
-              required
               value={academicLevel}
               onChange={(e) => setAcademicLevel(e.target.value)}
               className="w-full px-3.5 py-2.5 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#0A1013] text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-600"
@@ -174,29 +209,39 @@ export const TopicExplainer: React.FC = () => {
           </div>
         </div>
 
-        {suggestedTopics.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span className="text-slate-500 dark:text-slate-400">
-              Curriculum suggestions:
-            </span>
-            {suggestedTopics.slice(0, 4).map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setTopic(t.title)}
-                className="px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-800 hover:border-teal-600/60 text-slate-700 dark:text-slate-300 transition-colors cursor-pointer"
-              >
-                {t.title}
-              </button>
-            ))}
-          </div>
-        )}
+        <div className="flex flex-wrap items-center justify-between gap-4 pt-1">
+          {displayTopics.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="text-slate-500 dark:text-slate-400">
+                Instant syllabus topics:
+              </span>
+              {displayTopics.slice(0, 4).map((t) => {
+                const parentSubj = publicInfo.subjects.find(
+                  (s) => s.id === t.subjectId
+                );
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    disabled={loading}
+                    onClick={() =>
+                      void runExplanation(t.title, parentSubj?.name || subject)
+                    }
+                    className="px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-800 hover:border-teal-600/60 hover:bg-teal-600/5 text-slate-700 dark:text-slate-300 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    {t.title}
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div />
+          )}
 
-        <div className="flex items-center justify-end">
           <button
             type="submit"
             disabled={loading || !topic.trim()}
-            className="px-5 py-2.5 rounded-lg bg-teal-700 hover:bg-teal-600 dark:bg-teal-600 dark:hover:bg-teal-500 disabled:opacity-60 text-white text-sm font-semibold inline-flex items-center gap-2 transition-colors cursor-pointer"
+            className="px-5 py-2.5 rounded-lg bg-teal-700 hover:bg-teal-600 dark:bg-teal-600 dark:hover:bg-teal-500 disabled:opacity-60 text-white text-sm font-semibold inline-flex items-center gap-2 transition-colors cursor-pointer shrink-0"
           >
             {loading ? (
               <>
@@ -205,8 +250,8 @@ export const TopicExplainer: React.FC = () => {
               </>
             ) : (
               <>
-                <BookOpen className="w-4 h-4" />
-                <span>Generate Topic Explanation</span>
+                <Search className="w-4 h-4" />
+                <span>Search & Explain Topic</span>
               </>
             )}
           </button>

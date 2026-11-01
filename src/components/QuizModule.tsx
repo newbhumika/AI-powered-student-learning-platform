@@ -18,10 +18,15 @@ import type {
   QuizAttemptDetail,
   QuizDifficulty,
 } from '../shared/types.ts';
+import type { PortalSearchDispatch } from './DashboardLayout.tsx';
 
 type QuizStage = 'configure' | 'taking' | 'result';
 
-export const QuizModule: React.FC = () => {
+interface QuizModuleProps {
+  autoQuizRequest?: PortalSearchDispatch | null;
+}
+
+export const QuizModule: React.FC<QuizModuleProps> = ({ autoQuizRequest }) => {
   const { publicInfo } = useAuth();
 
   // Generator config
@@ -45,6 +50,7 @@ export const QuizModule: React.FC = () => {
   );
   const [secondsLeft, setSecondsLeft] = useState(300);
   const startTimeRef = useRef<number>(0);
+  const lastHandledNonce = useRef<number | null>(null);
 
   // Result & History
   const [resultDetail, setResultDetail] = useState<QuizAttemptDetail | null>(
@@ -85,25 +91,35 @@ export const QuizModule: React.FC = () => {
   // Auto-submit when timer expires
   useEffect(() => {
     if (stage === 'taking' && secondsLeft === 0 && activeQuiz && !submitting) {
-      handleSubmitQuiz();
+      void handleSubmitQuiz();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [secondsLeft, stage]);
 
-  const handleGenerateQuiz = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!subject.trim() || !topic.trim()) return;
+  const runQuizGeneration = async (
+    targetTopic: string,
+    targetSubject?: string,
+    targetDifficulty?: QuizDifficulty
+  ) => {
+    const cleanTopic = targetTopic.trim();
+    if (!cleanTopic) return;
+    const effectiveSubject =
+      (targetSubject ?? subject).trim() || 'Computer Science & Engineering';
+    const effectiveDiff = targetDifficulty ?? difficulty;
 
+    setTopic(cleanTopic);
+    setSubject(effectiveSubject);
+    setDifficulty(effectiveDiff);
     setGenerating(true);
     setError(null);
     try {
       const res = await apiRequest<{ quiz: Quiz }>('/api/ai/generate-quiz', {
         method: 'POST',
         body: JSON.stringify({
-          subject,
-          topic,
+          subject: effectiveSubject,
+          topic: cleanTopic,
           questionCount,
-          difficulty,
+          difficulty: effectiveDiff,
           questionType: 'MCQ',
         }),
       });
@@ -121,6 +137,23 @@ export const QuizModule: React.FC = () => {
     } finally {
       setGenerating(false);
     }
+  };
+
+  useEffect(() => {
+    if (
+      autoQuizRequest &&
+      autoQuizRequest.nonce !== lastHandledNonce.current
+    ) {
+      lastHandledNonce.current = autoQuizRequest.nonce;
+      setStage('configure');
+      void runQuizGeneration(autoQuizRequest.query, autoQuizRequest.subject);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoQuizRequest]);
+
+  const handleGenerateQuiz = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await runQuizGeneration(topic, subject, difficulty);
   };
 
   const handleSubmitQuiz = async () => {
@@ -513,7 +546,7 @@ export const QuizModule: React.FC = () => {
             AI Multiple-Choice Quiz Generator
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Configure your subject, topic, question count, and difficulty to launch a timed interactive assessment.
+            Configure your subject, topic, question count, and difficulty—or click any quick pick—to launch a timed interactive assessment.
           </p>
         </div>
 
@@ -532,7 +565,6 @@ export const QuizModule: React.FC = () => {
             <input
               type="text"
               list="quiz-subjects"
-              required
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
               className="w-full px-3.5 py-2.5 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#0A1013] text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-600"
@@ -593,20 +625,25 @@ export const QuizModule: React.FC = () => {
 
         <div className="flex flex-wrap items-center justify-between gap-4 pt-1">
           <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span className="text-slate-500 dark:text-slate-400">Quick picks:</span>
+            <span className="text-slate-500 dark:text-slate-400">
+              Instant quiz topics:
+            </span>
             {publicInfo.topics.slice(0, 4).map((t) => (
               <button
                 key={t.id}
                 type="button"
+                disabled={generating}
                 onClick={() => {
-                  setTopic(t.title);
                   const parentSubj = publicInfo.subjects.find(
                     (s) => s.id === t.subjectId
                   );
-                  if (parentSubj) setSubject(parentSubj.name);
-                  setDifficulty(t.difficulty);
+                  void runQuizGeneration(
+                    t.title,
+                    parentSubj?.name || subject,
+                    t.difficulty
+                  );
                 }}
-                className="px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-800 hover:border-teal-600/60 text-slate-700 dark:text-slate-300 transition-colors cursor-pointer"
+                className="px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-800 hover:border-teal-600/60 hover:bg-teal-600/5 text-slate-700 dark:text-slate-300 transition-colors cursor-pointer disabled:opacity-50"
               >
                 {t.title}
               </button>

@@ -8,6 +8,7 @@ import {
   Send,
   Trash2,
   AlertCircle,
+  Search,
 } from 'lucide-react';
 import { apiRequest } from '../lib/api.ts';
 import type {
@@ -15,6 +16,7 @@ import type {
   ChatMessage,
   ChatMode,
 } from '../shared/types.ts';
+import type { PortalSearchDispatch } from './DashboardLayout.tsx';
 
 const RESPONSE_MODES: { id: ChatMode; label: string; hint: string }[] = [
   {
@@ -51,8 +53,15 @@ const STARTER_QUESTIONS = [
   'How does TCP congestion control transition from Slow Start to Congestion Avoidance?',
 ];
 
-export const StudyAssistant: React.FC = () => {
+interface StudyAssistantProps {
+  autoPromptRequest?: PortalSearchDispatch | null;
+}
+
+export const StudyAssistant: React.FC<StudyAssistantProps> = ({
+  autoPromptRequest,
+}) => {
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
+  const [historyFilter, setHistoryFilter] = useState('');
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [mode, setMode] = useState<ChatMode>('detailed');
@@ -62,6 +71,7 @@ export const StudyAssistant: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const lastHandledNonce = useRef<number | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -69,7 +79,7 @@ export const StudyAssistant: React.FC = () => {
       .then((res) => {
         if (!mounted) return;
         setConversations(res.conversations);
-        if (res.conversations.length > 0) {
+        if (res.conversations.length > 0 && !autoPromptRequest) {
           setActiveConvId(res.conversations[0].id);
         }
       })
@@ -82,7 +92,7 @@ export const StudyAssistant: React.FC = () => {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [autoPromptRequest]);
 
   useEffect(() => {
     if (!activeConvId) {
@@ -134,7 +144,7 @@ export const StudyAssistant: React.FC = () => {
     }
   };
 
-  const handleSend = async (promptOverride?: string) => {
+  const handleSend = async (promptOverride?: string, startFreshThread = false) => {
     const promptText = (promptOverride ?? input).trim();
     if (!promptText || sending) return;
 
@@ -142,18 +152,23 @@ export const StudyAssistant: React.FC = () => {
     setSending(true);
     if (!promptOverride) setInput('');
 
-    // Optimistic user turn preview
+    const targetConversationId = startFreshThread ? undefined : activeConvId || undefined;
+    if (startFreshThread) {
+      setActiveConvId(null);
+      setMessages([]);
+    }
+
     const tempId = `temp-${Date.now()}`;
     const optimisticMsg: ChatMessage = {
       id: tempId,
-      conversationId: activeConvId || 'pending',
+      conversationId: targetConversationId || 'pending',
       userId: 'me',
       role: 'user',
       content: promptText,
       mode,
       createdAt: new Date().toISOString(),
     };
-    setMessages((prev) => [...prev, optimisticMsg]);
+    setMessages((prev) => (startFreshThread ? [optimisticMsg] : [...prev, optimisticMsg]));
 
     try {
       const res = await apiRequest<{
@@ -165,7 +180,7 @@ export const StudyAssistant: React.FC = () => {
         body: JSON.stringify({
           prompt: promptText,
           mode,
-          conversationId: activeConvId || undefined,
+          conversationId: targetConversationId,
         }),
       });
 
@@ -191,6 +206,17 @@ export const StudyAssistant: React.FC = () => {
     }
   };
 
+  useEffect(() => {
+    if (
+      autoPromptRequest &&
+      autoPromptRequest.nonce !== lastHandledNonce.current
+    ) {
+      lastHandledNonce.current = autoPromptRequest.nonce;
+      void handleSend(autoPromptRequest.query, true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoPromptRequest]);
+
   const handleCopy = async (id: string, content: string) => {
     try {
       await navigator.clipboard.writeText(content);
@@ -201,6 +227,12 @@ export const StudyAssistant: React.FC = () => {
     }
   };
 
+  const filteredConversations = conversations.filter(
+    (c) =>
+      !historyFilter.trim() ||
+      c.title.toLowerCase().includes(historyFilter.trim().toLowerCase())
+  );
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[calc(100vh-11rem)]">
       {/* Left Conversation History Panel */}
@@ -208,14 +240,25 @@ export const StudyAssistant: React.FC = () => {
         <button
           type="button"
           onClick={handleStartNew}
-          className="w-full py-2.5 px-3.5 rounded-lg bg-teal-700 hover:bg-teal-600 dark:bg-teal-600 dark:hover:bg-teal-500 text-white text-xs font-semibold inline-flex items-center justify-center gap-2 transition-colors cursor-pointer mb-4"
+          className="w-full py-2.5 px-3.5 rounded-lg bg-teal-700 hover:bg-teal-600 dark:bg-teal-600 dark:hover:bg-teal-500 text-white text-xs font-semibold inline-flex items-center justify-center gap-2 transition-colors cursor-pointer mb-3"
         >
           <MessageSquarePlus className="w-4 h-4" />
           <span>New Conversation</span>
         </button>
 
+        <div className="relative mb-3">
+          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            type="text"
+            value={historyFilter}
+            onChange={(e) => setHistoryFilter(e.target.value)}
+            placeholder="Filter threads..."
+            className="w-full pl-8 pr-2.5 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0A1013] text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-600"
+          />
+        </div>
+
         <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2 px-1">
-          Conversation History
+          Conversation History ({filteredConversations.length})
         </p>
 
         <div className="flex-1 overflow-y-auto space-y-1">
@@ -228,12 +271,14 @@ export const StudyAssistant: React.FC = () => {
                 />
               ))}
             </div>
-          ) : conversations.length === 0 ? (
+          ) : filteredConversations.length === 0 ? (
             <p className="text-xs text-slate-500 dark:text-slate-400 px-1 py-4">
-              Your saved study threads will appear here automatically.
+              {conversations.length === 0
+                ? 'Your saved study threads will appear here automatically.'
+                : 'No conversations match your filter.'}
             </p>
           ) : (
-            conversations.map((conv) => {
+            filteredConversations.map((conv) => {
               const isSelected = conv.id === activeConvId;
               return (
                 <div
@@ -319,7 +364,7 @@ export const StudyAssistant: React.FC = () => {
                   <button
                     key={q}
                     type="button"
-                    onClick={() => handleSend(q)}
+                    onClick={() => void handleSend(q)}
                     disabled={sending}
                     className="text-left p-3.5 rounded-lg border border-slate-200 dark:border-slate-800 hover:border-teal-600/60 bg-slate-50/70 dark:bg-[#0B1215] text-xs text-slate-700 dark:text-slate-300 leading-relaxed transition-colors cursor-pointer"
                   >
@@ -396,7 +441,7 @@ export const StudyAssistant: React.FC = () => {
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            handleSend();
+            void handleSend();
           }}
           className="border-t border-slate-200 dark:border-slate-800 p-4 bg-white dark:bg-[#10191E] flex items-end gap-3"
         >
@@ -407,7 +452,7 @@ export const StudyAssistant: React.FC = () => {
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                handleSend();
+                void handleSend();
               }
             }}
             placeholder="Ask a question or follow-up (Press Enter to send, Shift+Enter for new line)..."
@@ -419,7 +464,7 @@ export const StudyAssistant: React.FC = () => {
             className="px-4 py-2.5 h-[42px] rounded-lg bg-teal-700 hover:bg-teal-600 dark:bg-teal-600 dark:hover:bg-teal-500 disabled:opacity-50 text-white text-sm font-semibold inline-flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
           >
             <Send className="w-4 h-4" />
-            <span>Send</span>
+            <span>Ask AI</span>
           </button>
         </form>
       </div>

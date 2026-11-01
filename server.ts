@@ -607,6 +607,55 @@ async function startServer() {
   });
 
   // =========================================================================
+  // 4B. STUDENT PORTAL UNIFIED SEARCH (SYLLABUS TOPICS, NOTES, CONVERSATIONS)
+  // =========================================================================
+  app.get('/api/search', requireAuth, (req: AuthenticatedRequest, res) => {
+    const userId = req.authUser!.id;
+    const q = String(req.query.q ?? '').trim().toLowerCase();
+
+    const matchedTopics = store.tables.topics
+      .filter(
+        (t) =>
+          !q ||
+          t.title.toLowerCase().includes(q) ||
+          t.description.toLowerCase().includes(q)
+      )
+      .slice(0, 8)
+      .map((t) => {
+        const subj = store.tables.subjects.find((s) => s.id === t.subjectId);
+        return {
+          ...t,
+          subjectName: subj?.name || 'Computer Science & Engineering',
+        };
+      });
+
+    const matchedNotes = store.tables.saved_notes
+      .filter(
+        (n) =>
+          n.userId === userId &&
+          (!q ||
+            n.title.toLowerCase().includes(q) ||
+            n.topic.toLowerCase().includes(q) ||
+            n.subject.toLowerCase().includes(q) ||
+            n.markdownContent.toLowerCase().includes(q))
+      )
+      .slice(0, 6);
+
+    const matchedConversations = store.tables.chat_conversations
+      .filter(
+        (c) => c.userId === userId && (!q || c.title.toLowerCase().includes(q))
+      )
+      .slice(0, 6);
+
+    res.json({
+      query: q,
+      topics: matchedTopics,
+      notes: matchedNotes,
+      conversations: matchedConversations,
+    });
+  });
+
+  // =========================================================================
   // 5. AI STUDY ASSISTANT (CONVERSATIONS & MULTI-MODE CHAT)
   // =========================================================================
   app.get('/api/chat/conversations', requireAuth, (req: AuthenticatedRequest, res) => {
@@ -786,14 +835,16 @@ async function startServer() {
     async (req: AuthenticatedRequest, res) => {
       try {
         const user = req.authUser!;
-        const subject = String(req.body?.subject ?? '').trim();
+        const subject =
+          String(req.body?.subject ?? '').trim() ||
+          'Computer Science & Engineering';
         const topic = String(req.body?.topic ?? '').trim();
         const academicLevel =
           String(req.body?.academicLevel ?? '').trim() || user.academicLevel;
         const difficulty = String(req.body?.difficulty ?? 'Intermediate').trim();
 
-        if (!subject || !topic) {
-          res.status(400).json({ error: 'Both subject and topic are required.' });
+        if (!topic) {
+          res.status(400).json({ error: 'Please enter a topic to explain.' });
           return;
         }
 
@@ -837,7 +888,9 @@ async function startServer() {
     async (req: AuthenticatedRequest, res) => {
       try {
         const user = req.authUser!;
-        const subject = String(req.body?.subject ?? '').trim();
+        const subject =
+          String(req.body?.subject ?? '').trim() ||
+          'Computer Science & Engineering';
         const topic = String(req.body?.topic ?? '').trim();
         const rawCount = Number(req.body?.questionCount ?? 5);
         const questionCount = [5, 10, 15, 20].includes(rawCount) ? rawCount : 5;
@@ -846,8 +899,8 @@ async function startServer() {
           ? req.body.difficulty
           : 'Medium';
 
-        if (!subject || !topic) {
-          res.status(400).json({ error: 'Subject and topic are required to generate a quiz.' });
+        if (!topic) {
+          res.status(400).json({ error: 'Please enter a topic to generate a quiz.' });
           return;
         }
 
