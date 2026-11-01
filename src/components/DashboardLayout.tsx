@@ -28,6 +28,7 @@ import defaultStudentAvatar from '../assets/images/avatar_student_default_179352
 interface DashboardLayoutProps {
   onBackToLanding: () => void;
   onSwitchToAdminPortal: () => void;
+  onSwitchStudentAccount: () => void;
 }
 
 const NAV_ITEMS: {
@@ -47,6 +48,7 @@ const NAV_ITEMS: {
 export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   onBackToLanding,
   onSwitchToAdminPortal,
+  onSwitchStudentAccount,
 }) => {
   const { user, logout, theme, toggleTheme } = useAuth();
   const [activeTab, setActiveTab] = useState<StudentTab>('overview');
@@ -117,7 +119,16 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-teal-700 dark:text-teal-400 hover:bg-teal-600/10 transition-colors cursor-pointer"
         >
           <Shield className="w-4 h-4" />
-          <span>Admin Portal</span>
+          <span>Open Admin Portal</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={onSwitchStudentAccount}
+          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+        >
+          <User className="w-4 h-4" />
+          <span>Switch Student Profile</span>
         </button>
 
         <button
@@ -243,7 +254,12 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           {activeTab === 'quiz' && <QuizModule />}
           {activeTab === 'notes' && <NotesGenerator />}
           {activeTab === 'progress' && <ProgressTracker />}
-          {activeTab === 'profile' && <StudentProfile />}
+          {activeTab === 'profile' && (
+            <StudentProfile
+              onSwitchToAdminPortal={onSwitchToAdminPortal}
+              onSwitchStudentAccount={onSwitchStudentAccount}
+            />
+          )}
         </main>
       </div>
     </div>

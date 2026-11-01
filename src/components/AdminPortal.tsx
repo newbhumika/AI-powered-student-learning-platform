@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   Eye,
   GraduationCap,
-  KeyRound,
   LogOut,
   Moon,
   Plus,
@@ -43,7 +42,8 @@ type AdminTab = 'overview' | 'students' | 'curriculum' | 'settings';
 
 interface AdminPortalProps {
   onExitToHome: () => void;
-  onSwitchToStudentPortal: () => void;
+  onSwitchToStudentPortal: (studentId?: string) => void;
+  onOpenProfileSelector?: () => void;
 }
 
 const ACADEMIC_LEVELS = [
@@ -72,7 +72,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const [showEnrollForm, setShowEnrollForm] = useState(false);
   const [enrollName, setEnrollName] = useState('');
   const [enrollEmail, setEnrollEmail] = useState('');
-  const [enrollPassword, setEnrollPassword] = useState('');
   const [enrollLevel, setEnrollLevel] = useState(ACADEMIC_LEVELS[0]);
 
   const [inspectedStudent, setInspectedStudent] = useState<{
@@ -88,7 +87,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     }[];
     activities: UserActivity[];
   } | null>(null);
-  const [resetStudentPwd, setResetStudentPwd] = useState('');
   const [confirmDeleteStudentId, setConfirmDeleteStudentId] = useState<string | null>(
     null
   );
@@ -108,11 +106,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const [settingsForm, setSettingsForm] = useState<Record<string, string>>({});
   const [adminAccountName, setAdminAccountName] = useState(user?.fullName || '');
   const [adminAccountEmail, setAdminAccountEmail] = useState(user?.email || '');
-  const [adminNewPassword, setAdminNewPassword] = useState('');
 
   const [coAdminName, setCoAdminName] = useState('');
   const [coAdminEmail, setCoAdminEmail] = useState('');
-  const [coAdminPassword, setCoAdminPassword] = useState('');
 
   const fetchOverview = async () => {
     try {
@@ -172,7 +168,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         activities: UserActivity[];
       }>(`/api/admin/students/${studentId}`);
       setInspectedStudent(res);
-      setResetStudentPwd('');
       setConfirmDeleteStudentId(null);
     } catch (err) {
       setError(
@@ -189,38 +184,16 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         body: JSON.stringify({
           fullName: enrollName,
           email: enrollEmail,
-          password: enrollPassword,
           academicLevel: enrollLevel,
         }),
       });
       setEnrollName('');
       setEnrollEmail('');
-      setEnrollPassword('');
       setShowEnrollForm(false);
       await fetchOverview();
-      setNotice('New student account enrolled and ready for Student Sign In.');
+      setNotice('New student profile enrolled (no password needed).');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to enroll student.');
-    }
-  };
-
-  const handleAdminResetStudentPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inspectedStudent) return;
-    try {
-      const res = await apiRequest<{ message: string }>(
-        `/api/admin/students/${inspectedStudent.student.id}/password`,
-        {
-          method: 'PATCH',
-          body: JSON.stringify({ newPassword: resetStudentPwd }),
-        }
-      );
-      setResetStudentPwd('');
-      setNotice(res.message);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : 'Failed to reset student password.'
-      );
     }
   };
 
@@ -250,12 +223,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           body: JSON.stringify({
             fullName: adminAccountName,
             email: adminAccountEmail,
-            newPassword: adminNewPassword || undefined,
           }),
         }
       );
       updateLocalUser(res.user);
-      setAdminNewPassword('');
       await fetchOverview();
       setNotice(res.message);
     } catch (err) {
@@ -273,14 +244,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         body: JSON.stringify({
           fullName: coAdminName,
           email: coAdminEmail,
-          password: coAdminPassword,
         }),
       });
       setCoAdminName('');
       setCoAdminEmail('');
-      setCoAdminPassword('');
       await fetchOverview();
-      setNotice('Additional Faculty Administrator added.');
+      setNotice('Additional Faculty Administrator added (passwordless access active).');
     } catch (err) {
       setError(
         err instanceof Error ? err.message : 'Failed to add administrator.'
@@ -424,11 +393,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         <div className="space-y-2 pt-4 border-t border-slate-200 dark:border-slate-800">
           <button
             type="button"
-            onClick={onSwitchToStudentPortal}
+            onClick={() => onSwitchToStudentPortal()}
             className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-teal-700 dark:text-teal-400 hover:bg-teal-600/10 transition-colors cursor-pointer"
           >
             <GraduationCap className="w-4 h-4" />
-            <span>Student Login / Portal</span>
+            <span>Open Student Portal</span>
           </button>
 
           <button
@@ -496,10 +465,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           <div className="flex items-center gap-4 shrink-0">
             <button
               type="button"
-              onClick={onSwitchToStudentPortal}
+              onClick={() => onSwitchToStudentPortal()}
               className="text-xs font-medium text-teal-700 dark:text-teal-400 hover:underline whitespace-nowrap cursor-pointer"
             >
-              Student Login
+              Open Student Portal
             </button>
             <button
               type="button"
@@ -688,7 +657,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                           Registered Students ({data.students.length})
                         </h3>
                         <p className="text-xs text-slate-500 dark:text-slate-400">
-                          Enroll new students, inspect learning records, reset passwords, or manage account access
+                          Enroll new students without passwords, inspect learning records, or open any student workspace directly
                         </p>
                       </div>
 
@@ -718,7 +687,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     {showEnrollForm && (
                       <form
                         onSubmit={handleEnrollStudent}
-                        className="rounded-xl border border-teal-600/30 bg-[#F6F8FA] dark:bg-[#0A1013] p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end"
+                        className="rounded-xl border border-teal-600/30 bg-[#F6F8FA] dark:bg-[#0A1013] p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end"
                       >
                         <div>
                           <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">
@@ -735,7 +704,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                         </div>
                         <div>
                           <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">
-                            Student Login Email
+                            Student Email
                           </label>
                           <input
                             type="email"
@@ -743,20 +712,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                             value={enrollEmail}
                             onChange={(e) => setEnrollEmail(e.target.value)}
                             placeholder="priya@university.edu"
-                            className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#10191E]"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">
-                            Initial Password
-                          </label>
-                          <input
-                            type="password"
-                            required
-                            minLength={6}
-                            value={enrollPassword}
-                            onChange={(e) => setEnrollPassword(e.target.value)}
-                            placeholder="Min 6 chars"
                             className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#10191E]"
                           />
                         </div>
@@ -780,7 +735,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                           type="submit"
                           className="py-2 px-4 rounded-lg bg-teal-700 hover:bg-teal-600 dark:bg-teal-600 dark:hover:bg-teal-500 text-white text-xs font-semibold cursor-pointer"
                         >
-                          Create Student Login
+                          Enroll Student (No Password)
                         </button>
                       </form>
                     )}
@@ -922,31 +877,25 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                         </button>
                       </div>
 
-                      {/* Admin Reset Student Password */}
-                      <form
-                        onSubmit={handleAdminResetStudentPassword}
-                        className="flex flex-wrap items-center gap-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0A1013] p-3"
-                      >
-                        <KeyRound className="w-4 h-4 text-teal-700 dark:text-teal-400 shrink-0" />
-                        <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
-                          Reset Student Password:
+                      {/* Passwordless Direct Student Workspace Switch */}
+                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0A1013] p-3">
+                        <span className="text-xs text-slate-600 dark:text-slate-300">
+                          Passwordless student workspace access is enabled for{' '}
+                          <strong>{inspectedStudent.student.fullName}</strong>.
                         </span>
-                        <input
-                          type="password"
-                          required
-                          minLength={6}
-                          value={resetStudentPwd}
-                          onChange={(e) => setResetStudentPwd(e.target.value)}
-                          placeholder="New password (min 6 chars)"
-                          className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#10191E] flex-1 min-w-[180px]"
-                        />
-                        <button
-                          type="submit"
-                          className="px-3.5 py-1.5 rounded-lg bg-teal-700 hover:bg-teal-600 dark:bg-teal-600 text-white text-xs font-semibold cursor-pointer"
-                        >
-                          Set Password
-                        </button>
-                      </form>
+                        {inspectedStudent.student.isActive && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onSwitchToStudentPortal(inspectedStudent.student.id)
+                            }
+                            className="px-3.5 py-1.5 rounded-lg bg-teal-700 hover:bg-teal-600 dark:bg-teal-600 text-white text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <GraduationCap className="w-3.5 h-3.5" />
+                            <span>Open Student Portal as {inspectedStudent.student.fullName}</span>
+                          </button>
+                        )}
+                      </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div>
@@ -1249,17 +1198,17 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   </form>
 
                   <div className="lg:col-span-5 space-y-6">
-                    {/* Update Current Admin Credentials */}
+                    {/* Update Current Admin Profile */}
                     <form
                       onSubmit={handleUpdateAdminAccount}
                       className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#10191E] p-6 space-y-4"
                     >
                       <div>
                         <h3 className="font-display text-base font-bold text-slate-900 dark:text-white">
-                          My Administrator Credentials
+                          Administrator Profile
                         </h3>
                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                          Update your administrator login email or set a custom password for Admin Portal sign-in.
+                          Update your administrator display name and email (passwordless access active).
                         </p>
                       </div>
 
@@ -1278,7 +1227,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
                       <div>
                         <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-                          Admin Sign-In Email
+                          Admin Email
                         </label>
                         <input
                           type="email"
@@ -1289,25 +1238,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                         />
                       </div>
 
-                      <div>
-                        <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-                          New Password (optional, min 8 chars)
-                        </label>
-                        <input
-                          type="password"
-                          minLength={8}
-                          value={adminNewPassword}
-                          onChange={(e) => setAdminNewPassword(e.target.value)}
-                          placeholder="Leave blank to keep current password"
-                          className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#0A1013]"
-                        />
-                      </div>
-
                       <button
                         type="submit"
                         className="w-full py-2 px-4 rounded-lg bg-slate-900 dark:bg-teal-600 hover:bg-slate-800 dark:hover:bg-teal-500 text-white text-xs font-semibold cursor-pointer"
                       >
-                        Update Admin Account
+                        Save Admin Profile
                       </button>
                     </form>
 
@@ -1321,7 +1256,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                           Faculty Administrators ({data.admins?.length || 1})
                         </h3>
                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                          Grant Admin Portal access to an additional faculty evaluator.
+                          Grant passwordless Admin Portal access to an additional faculty evaluator.
                         </p>
                       </div>
 
@@ -1355,21 +1290,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                         onChange={(e) => setCoAdminEmail(e.target.value)}
                         className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#0A1013]"
                       />
-                      <input
-                        type="password"
-                        required
-                        minLength={8}
-                        placeholder="Admin Password (min 8 chars)"
-                        value={coAdminPassword}
-                        onChange={(e) => setCoAdminPassword(e.target.value)}
-                        className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#0A1013]"
-                      />
                       <button
                         type="submit"
                         className="w-full py-2 px-4 rounded-lg bg-teal-700 hover:bg-teal-600 dark:bg-teal-600 dark:hover:bg-teal-500 text-white text-xs font-semibold inline-flex items-center justify-center gap-1.5 cursor-pointer"
                       >
                         <UserPlus className="w-3.5 h-3.5" />
-                        <span>Add Faculty Administrator</span>
+                        <span>Add Faculty Administrator (No Password)</span>
                       </button>
                     </form>
                   </div>

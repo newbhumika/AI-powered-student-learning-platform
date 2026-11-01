@@ -1,37 +1,26 @@
-# Administrator Portal Setup Guide
+# Student & Administrator Portal Access Guide
 
-The **AI-Powered Student Learning Assistant** enforces strict separation between student accounts and administrator governance using server-side `scrypt` password hashing, HMAC-SHA256 bearer session tokens, and persistent JSON document storage (`data/database.json`). Production credentials are **never** hardcoded into frontend source code.
-
----
-
-## Option A: Environment Variable Configuration (Recommended for Production)
-
-Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` in your server `.env` file (or hosting Secrets panel):
-
-```env
-ADMIN_EMAIL="hod.cse@university.edu"
-ADMIN_PASSWORD="ReplaceWithStrongFacultyPassword!"
-```
-
-When the server starts:
-1. `syncEnvironmentAdmin()` hashes the configured password using cryptographic `scrypt` with a 16-byte random salt.
-2. Creates or updates the administrator record (`role: 'admin'`) inside `data/database.json`.
-3. Disables unauthenticated quick-demo admin access (`adminSandboxAccess: false`) so only verified administrators can enter the console.
-4. Click **Admin Portal** in the navigation bar or landing page and sign in with your configured email and password.
+The **AI-Powered Student Learning Assistant** provides **open, passwordless access** to both the **Student Portal** and the **Admin Portal** for frictionless academic evaluation, demonstration, and daily use—while maintaining isolated per-user session tokens and persistent SQL-free document storage (`data/database.json`).
 
 ---
 
-## Option B: One-Time Interactive Admin Initialization (Academic Evaluation Mode)
+## 1. Instant One-Click Portal Access (No Password Required)
 
-If `ADMIN_EMAIL` and `ADMIN_PASSWORD` are not set in `.env`:
-1. Open the website and click **Admin Portal**.
-2. If zero administrator accounts exist (`GET /api/admin/status` -> `{ configured: false }`), the **Initialize First Administrator** form appears so you can create your primary faculty admin account (or use the server-backed **Instant Demo Admin Console** button during academic demonstrations).
-3. Once an administrator is initialized, `/api/admin/setup` permanently locks (`403 Forbidden`) against unauthenticated setup requests.
+- **Student Portal:** Click **Student Portal** or **Open Student Portal** anywhere in the top navigation bar, hero section, portals hub, or footer to enter the student workspace immediately with zero password prompts.
+- **Admin Portal:** Click **Admin Portal** or **Open Admin Portal** anywhere on the landing page—or click **Open Admin Portal** directly inside the Student sidebar—to enter the Faculty Governance Console with one click and no password required.
 
 ---
 
-## Administrator Capabilities
+## 2. Switching or Creating Custom Profiles (Passwordless)
+
+- **Custom Student Profiles:** Click **Custom Student Profile** on the landing page or **Switch Student Profile** inside the student sidebar to select an existing student profile or create a new student workspace using only **Full Name**, **Email**, and **Academic Semester** (no password required).
+- **Direct Student Inspection from Admin Portal:** Inside the Admin Portal's **Student Directory**, select any student and click **Open Student Portal as [Student Name]** to switch directly into their live workspace without any password prompt.
+- **Faculty Co-Administrators:** Under **Settings & Admins** in the Admin Portal, enroll additional faculty administrators with **Name** and **Email** only.
+
+---
+
+## 3. Administrator Console Capabilities
 - **Platform Overview:** View total registered students, active accounts, cohort quiz attempts, average score, total saved notes, and AI module invocation breakdown.
-- **Student Directory & Enrollment:** Enroll new students directly (`POST /api/admin/students`), search by name or email, inspect individual student quiz scores, saved notes, and activity timelines, reset forgotten student passwords, toggle active/deactivated status, or permanently remove student records with cascade cleanup.
+- **Student Directory & Enrollment:** Enroll new students directly (`POST /api/admin/students`) without passwords, search by name or email, inspect individual student quiz scores, saved notes, and activity timelines, switch into any student's workspace, toggle active/deactivated status, or permanently remove student records with cascade cleanup.
 - **Subjects & Topics Catalog:** Add or remove university subjects and recommended syllabus topics that populate dynamically across all student AI modules.
-- **Platform Governance & Co-Admins:** Update institution name, pause/enable student self-registration, adjust per-minute AI rate limits, configure default quiz seconds per question, update your own admin credentials, and add additional Faculty Co-Administrators.
+- **Platform Governance:** Update institution name, pause/enable student self-enrollment, adjust per-minute AI rate limits, configure default quiz seconds per question, update administrator display profile, and add Faculty Co-Administrators.

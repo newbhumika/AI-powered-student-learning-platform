@@ -14,16 +14,37 @@ import { AdminPortal } from './components/AdminPortal.tsx';
 type TopView = 'landing' | 'auth' | 'workspace';
 
 const AppRouter: React.FC = () => {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, isSwitchingPortal, enterPortalPasswordless } = useAuth();
   const [view, setView] = useState<TopView>('landing');
   const [authMode, setAuthMode] = useState<AuthScreenMode>('login');
 
-  if (isLoading) {
+  const handleDirectPortalOpen = async (
+    role: 'student' | 'admin',
+    studentId?: string
+  ) => {
+    if (!studentId && user && user.role === role) {
+      setView('workspace');
+      return;
+    }
+    try {
+      await enterPortalPasswordless(role, studentId);
+      setView('workspace');
+    } catch {
+      setAuthMode(role === 'admin' ? 'admin' : 'login');
+      setView('auth');
+    }
+  };
+
+  if (isLoading || isSwitchingPortal) {
     return (
       <div className="min-h-screen bg-[#F6F8FA] dark:bg-[#0A1013] flex items-center justify-center">
         <div className="inline-flex items-center gap-2.5 text-sm text-slate-600 dark:text-slate-300">
           <Loader2 className="w-5 h-5 animate-spin text-teal-700 dark:text-teal-400" />
-          <span>Loading AI-Powered Student Learning Assistant...</span>
+          <span>
+            {isSwitchingPortal
+              ? 'Opening portal workspace...'
+              : 'Loading AI-Powered Student Learning Assistant...'}
+          </span>
         </div>
       </div>
     );
@@ -34,7 +55,10 @@ const AppRouter: React.FC = () => {
       return (
         <AdminPortal
           onExitToHome={() => setView('landing')}
-          onSwitchToStudentPortal={() => {
+          onSwitchToStudentPortal={(studentId?: string) =>
+            handleDirectPortalOpen('student', studentId)
+          }
+          onOpenProfileSelector={() => {
             setAuthMode('login');
             setView('auth');
           }}
@@ -44,8 +68,9 @@ const AppRouter: React.FC = () => {
     return (
       <DashboardLayout
         onBackToLanding={() => setView('landing')}
-        onSwitchToAdminPortal={() => {
-          setAuthMode('admin');
+        onSwitchToAdminPortal={() => handleDirectPortalOpen('admin')}
+        onSwitchStudentAccount={() => {
+          setAuthMode('login');
           setView('auth');
         }}
       />
@@ -64,15 +89,9 @@ const AppRouter: React.FC = () => {
 
   return (
     <LandingPage
+      onOpenStudentPortal={() => handleDirectPortalOpen('student')}
+      onOpenAdminPortal={() => handleDirectPortalOpen('admin')}
       onNavigateAuth={(mode) => {
-        if (mode === 'admin' && user?.role === 'admin') {
-          setView('workspace');
-          return;
-        }
-        if (mode === 'login' && user?.role === 'student') {
-          setView('workspace');
-          return;
-        }
         setAuthMode(mode);
         setView('auth');
       }}
@@ -80,8 +99,7 @@ const AppRouter: React.FC = () => {
         if (user) {
           setView('workspace');
         } else {
-          setAuthMode('login');
-          setView('auth');
+          handleDirectPortalOpen('student');
         }
       }}
     />

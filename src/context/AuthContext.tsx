@@ -9,6 +9,7 @@ export interface PublicPlatformInfo {
   sandboxQuickAccess?: boolean;
   studentSandboxAccess?: boolean;
   adminSandboxAccess?: boolean;
+  passwordlessMode?: boolean;
   subjects: Subject[];
   topics: Topic[];
 }
@@ -16,10 +17,15 @@ export interface PublicPlatformInfo {
 interface AuthContextValue {
   user: UserProfile | null;
   isLoading: boolean;
+  isSwitchingPortal: boolean;
   publicInfo: PublicPlatformInfo;
   theme: 'dark' | 'light';
   toggleTheme: () => void;
   establishSession: (token: string, profile: UserProfile) => void;
+  enterPortalPasswordless: (
+    role: 'student' | 'admin',
+    studentId?: string
+  ) => Promise<UserProfile>;
   updateLocalUser: (profile: UserProfile) => void;
   logout: () => Promise<void>;
   refreshPublicInfo: () => Promise<void>;
@@ -32,6 +38,7 @@ const defaultPublicInfo: PublicPlatformInfo = {
   sandboxQuickAccess: true,
   studentSandboxAccess: true,
   adminSandboxAccess: true,
+  passwordlessMode: true,
   subjects: [],
   topics: [],
 };
@@ -41,6 +48,7 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSwitchingPortal, setIsSwitchingPortal] = useState(false);
   const [publicInfo, setPublicInfo] = useState<PublicPlatformInfo>(defaultPublicInfo);
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     try {
@@ -109,6 +117,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(profile);
   }, []);
 
+  const enterPortalPasswordless = useCallback(
+    async (role: 'student' | 'admin', studentId?: string): Promise<UserProfile> => {
+      setIsSwitchingPortal(true);
+      try {
+        const res = await apiRequest<{ token: string; user: UserProfile }>(
+          '/api/auth/sandbox-session',
+          {
+            method: 'POST',
+            body: JSON.stringify({ role, studentId }),
+          }
+        );
+        setStoredToken(res.token);
+        setUser(res.user);
+        return res.user;
+      } finally {
+        setIsSwitchingPortal(false);
+      }
+    },
+    []
+  );
+
   const updateLocalUser = useCallback((profile: UserProfile) => {
     setUser(profile);
   }, []);
@@ -129,10 +158,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         user,
         isLoading,
+        isSwitchingPortal,
         publicInfo,
         theme,
         toggleTheme,
         establishSession,
+        enterPortalPasswordless,
         updateLocalUser,
         logout,
         refreshPublicInfo,

@@ -2,10 +2,11 @@ import React, { useState } from 'react';
 import {
   AlertCircle,
   CheckCircle2,
-  KeyRound,
   Loader2,
   Save,
+  Shield,
   Upload,
+  Users,
 } from 'lucide-react';
 import { apiRequest } from '../lib/api.ts';
 import { useAuth } from '../context/AuthContext.tsx';
@@ -21,7 +22,15 @@ const ACADEMIC_LEVELS = [
   'High School / Class 11-12 PCM',
 ];
 
-export const StudentProfile: React.FC = () => {
+interface StudentProfileProps {
+  onSwitchToAdminPortal?: () => void;
+  onSwitchStudentAccount?: () => void;
+}
+
+export const StudentProfile: React.FC<StudentProfileProps> = ({
+  onSwitchToAdminPortal,
+  onSwitchStudentAccount,
+}) => {
   const { user, updateLocalUser, publicInfo } = useAuth();
 
   const [fullName, setFullName] = useState(user?.fullName || '');
@@ -34,18 +43,8 @@ export const StudentProfile: React.FC = () => {
   );
   const [imgError, setImgError] = useState(false);
 
-  // Password form
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-
   const [savingProfile, setSavingProfile] = useState(false);
-  const [savingPassword, setSavingPassword] = useState(false);
   const [profileNotice, setProfileNotice] = useState<{
-    type: 'success' | 'error';
-    text: string;
-  } | null>(null);
-  const [passwordNotice, setPasswordNotice] = useState<{
     type: 'success' | 'error';
     text: string;
   } | null>(null);
@@ -114,44 +113,6 @@ export const StudentProfile: React.FC = () => {
       });
     } finally {
       setSavingProfile(false);
-    }
-  };
-
-  const handleUpdatePassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setPasswordNotice(null);
-
-    if (newPassword !== confirmPassword) {
-      setPasswordNotice({
-        type: 'error',
-        text: 'New password and confirmation do not match.',
-      });
-      return;
-    }
-
-    setSavingPassword(true);
-    try {
-      const res = await apiRequest<{ message: string }>(
-        '/api/profile/password',
-        {
-          method: 'PUT',
-          body: JSON.stringify({
-            currentPassword,
-            newPassword,
-          }),
-        }
-      );
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
-      setPasswordNotice({ type: 'success', text: res.message });
-    } catch (err) {
-      setPasswordNotice({
-        type: 'error',
-        text: err instanceof Error ? err.message : 'Password update failed.',
-      });
-    } finally {
-      setSavingPassword(false);
     }
   };
 
@@ -241,7 +202,7 @@ export const StudentProfile: React.FC = () => {
 
           <div>
             <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-              Registered Email
+              Student Email
             </label>
             <input
               type="email"
@@ -308,91 +269,49 @@ export const StudentProfile: React.FC = () => {
         </button>
       </form>
 
-      {/* Password Update Card */}
-      <form
-        onSubmit={handleUpdatePassword}
-        className="lg:col-span-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#10191E] p-6 sm:p-8 space-y-4 h-fit"
-      >
+      {/* Passwordless Portal Access & Quick Switch Card */}
+      <div className="lg:col-span-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#10191E] p-6 sm:p-8 space-y-4 h-fit">
         <div>
           <h3 className="font-display text-lg font-bold text-slate-900 dark:text-white">
-            Security & Password Update
+            Passwordless Portal Access
           </h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Verify your current password to set a new account password.
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+            Both the Student Portal and Admin Governance Console operate in frictionless open mode—no password is required to enter or switch roles.
           </p>
         </div>
 
-        {passwordNotice && (
-          <div
-            className={`rounded-lg border px-4 py-3 flex items-start gap-2.5 text-xs ${
-              passwordNotice.type === 'success'
-                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-                : 'border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300'
-            }`}
-          >
-            {passwordNotice.type === 'success' ? (
-              <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
-            ) : (
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-            )}
-            <span>{passwordNotice.text}</span>
-          </div>
-        )}
-
-        <div>
-          <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-            Current Password
-          </label>
-          <input
-            type="password"
-            required
-            value={currentPassword}
-            onChange={(e) => setCurrentPassword(e.target.value)}
-            className="w-full px-3.5 py-2.5 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#0A1013] text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-600"
-          />
+        <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-[#F6F8FA] dark:bg-[#0A1013] p-4 space-y-1.5 text-xs">
+          <p className="text-slate-500 dark:text-slate-400">Active Profile</p>
+          <p className="font-semibold text-slate-900 dark:text-white">
+            {user?.fullName}
+          </p>
+          <p className="text-slate-600 dark:text-slate-300">{user?.email}</p>
         </div>
 
-        <div>
-          <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-            New Password (min 6 characters)
-          </label>
-          <input
-            type="password"
-            required
-            minLength={6}
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-            className="w-full px-3.5 py-2.5 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#0A1013] text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-600"
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-            Confirm New Password
-          </label>
-          <input
-            type="password"
-            required
-            minLength={6}
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            className="w-full px-3.5 py-2.5 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#0A1013] text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-600"
-          />
-        </div>
-
-        <button
-          type="submit"
-          disabled={savingPassword}
-          className="w-full py-2.5 px-4 rounded-lg bg-slate-900 dark:bg-teal-600 hover:bg-slate-800 dark:hover:bg-teal-500 disabled:opacity-60 text-white text-sm font-semibold inline-flex items-center justify-center gap-2 transition-colors cursor-pointer"
-        >
-          {savingPassword ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <KeyRound className="w-4 h-4" />
+        <div className="space-y-2.5 pt-1">
+          {onSwitchStudentAccount && (
+            <button
+              type="button"
+              onClick={onSwitchStudentAccount}
+              className="w-full py-2.5 px-4 rounded-lg border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 text-xs font-semibold inline-flex items-center justify-center gap-2 transition-colors cursor-pointer"
+            >
+              <Users className="w-4 h-4 text-teal-700 dark:text-teal-400" />
+              <span>Switch or Create Another Student Profile</span>
+            </button>
           )}
-          <span>Update Password</span>
-        </button>
-      </form>
+
+          {onSwitchToAdminPortal && (
+            <button
+              type="button"
+              onClick={onSwitchToAdminPortal}
+              className="w-full py-2.5 px-4 rounded-lg bg-slate-900 dark:bg-teal-600 hover:bg-slate-800 dark:hover:bg-teal-500 text-white text-xs font-semibold inline-flex items-center justify-center gap-2 transition-colors cursor-pointer"
+            >
+              <Shield className="w-4 h-4" />
+              <span>Open Admin Portal (No Password)</span>
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 };

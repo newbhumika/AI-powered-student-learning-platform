@@ -64,7 +64,6 @@ async function startServer() {
   // 1. PUBLIC METADATA & CURRICULUM CATALOG
   // =========================================================================
   app.get('/api/public/info', (_req, res) => {
-    const adminLocked = isProductionAdminLocked();
     res.json({
       institutionName: store.getSetting(
         'institution_name',
@@ -73,9 +72,10 @@ async function startServer() {
       allowRegistration:
         store.getSetting('allow_student_registration', 'true') === 'true',
       aiConfigured: isAiConfigured(),
-      sandboxQuickAccess: !adminLocked,
+      sandboxQuickAccess: true,
       studentSandboxAccess: true,
-      adminSandboxAccess: !adminLocked,
+      adminSandboxAccess: true,
+      passwordlessMode: true,
       subjects: store.tables.subjects,
       topics: store.tables.topics,
     });
@@ -113,7 +113,7 @@ async function startServer() {
 
     const fullName = String(req.body?.fullName ?? '').trim();
     const email = String(req.body?.email ?? '').trim().toLowerCase();
-    const password = String(req.body?.password ?? '');
+    const rawPassword = String(req.body?.password ?? '').trim();
     const academicLevel =
       String(req.body?.academicLevel ?? '').trim() || 'B.Tech CSE - 5th Semester';
     const preferredSubjects = Array.isArray(req.body?.preferredSubjects)
@@ -128,16 +128,29 @@ async function startServer() {
       res.status(400).json({ error: 'Please enter a valid university or personal email address.' });
       return;
     }
-    if (password.length < 6) {
-      res.status(400).json({ error: 'Password must be at least 6 characters long.' });
-      return;
-    }
 
-    const exists = store.tables.profiles.some(
+    const existing = store.tables.profiles.find(
       (p) => p.email.toLowerCase() === email
     );
-    if (exists) {
-      res.status(409).json({ error: 'An account with this email address already exists.' });
+    if (existing) {
+      if (existing.role === 'admin') {
+        res.status(409).json({
+          error: 'This email is assigned to an Administrator profile. Please use a student email.',
+        });
+        return;
+      }
+      existing.fullName = fullName;
+      existing.academicLevel = academicLevel;
+      existing.preferredSubjects = preferredSubjects;
+      existing.isActive = true;
+      existing.updatedAt = new Date().toISOString();
+      store.commit();
+
+      const token = createSessionToken(existing.id, 'student');
+      res.status(200).json({
+        token,
+        user: sanitizeProfile(existing),
+      });
       return;
     }
 
@@ -145,7 +158,7 @@ async function startServer() {
     const newStudent: StoredProfile = {
       id: generateId(),
       email,
-      passwordHash: hashPassword(password),
+      passwordHash: hashPassword(rawPassword || generateId()),
       fullName,
       avatarUrl: '',
       academicLevel,
@@ -162,7 +175,7 @@ async function startServer() {
     store.logActivity({
       userId: newStudent.id,
       activityType: 'login',
-      title: 'Created student account and started first session',
+      title: 'Created student profile and entered Student Portal',
       subject: 'Account',
     });
 
@@ -175,10 +188,23 @@ async function startServer() {
 
   app.post('/api/auth/login', (req, res) => {
     const email = String(req.body?.email ?? '').trim().toLowerCase();
-    const password = String(req.body?.password ?? '');
+    const providedName = String(req.body?.fullName ?? '').trim();
 
-    if (!email || !password) {
-      res.status(400).json({ error: 'Email and password are required.' });
+    if (!email) {
+      const fallbackStudent = getOrCreateSandboxProfile('student');
+      store.logActivity({
+        userId: fallbackStudent.id,
+        activityType: 'login',
+        title: 'Entered Student Learning Portal',
+        subject: 'Account',
+      });
+      const token = createSessionToken(fallbackStudent.id, 'student');
+      res.json({ token, user: sanitizeProfile(fallbackStudent) });
+      return;
+    }
+
+    if (!isValidEmail(email)) {
+      res.status(400).json({ error: 'Please enter a valid email address.' });
       return;
     }
 
@@ -187,22 +213,47 @@ async function startServer() {
     );
     if (matchingEmailProfile && matchingEmailProfile.role === 'admin') {
       res.status(403).json({
-        error: 'This email is registered as an Administrator. Please switch to the Admin Portal tab to sign in.',
+        error: 'This email belongs to an Administrator account. Click Admin Portal to open it directly.',
       });
       return;
     }
 
-    const profile =
+    let profile =
       matchingEmailProfile?.role === 'student' ? matchingEmailProfile : undefined;
 
-    if (!profile || !verifyPassword(password, profile.passwordHash)) {
-      res.status(401).json({ error: 'Invalid student email or password.' });
-      return;
+    if (!profile) {
+      const now = new Date().toISOString();
+      const derivedName =
+        providedName ||
+        email
+          .split('@')[0]
+          .replace(/[._-]+/g, ' ')
+          .replace(/\b\w/g, (ch) => ch.toUpperCase()) ||
+        'Student';
+      profile = {
+        id: generateId(),
+        email,
+        passwordHash: hashPassword(generateId()),
+        fullName: derivedName,
+        avatarUrl: '',
+        academicLevel: 'B.Tech CSE - 5th Semester',
+        preferredSubjects: [
+          'Data Structures & Algorithms',
+          'Operating Systems',
+          'Database Management Systems',
+        ],
+        role: 'student',
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      };
+      store.tables.profiles.push(profile);
+      store.commit();
     }
 
     if (!profile.isActive) {
       res.status(403).json({
-        error: 'This student account has been deactivated by the administrator.',
+        error: 'This student account has been suspended by the administrator.',
       });
       return;
     }
@@ -210,7 +261,7 @@ async function startServer() {
     store.logActivity({
       userId: profile.id,
       activityType: 'login',
-      title: 'Signed in to Student Learning Portal',
+      title: 'Entered Student Learning Portal',
       subject: 'Account',
     });
 
@@ -223,11 +274,23 @@ async function startServer() {
 
   app.post('/api/auth/sandbox-session', (req, res) => {
     const requestedRole = req.body?.role === 'admin' ? 'admin' : 'student';
-    if (requestedRole === 'admin' && isProductionAdminLocked()) {
-      res.status(403).json({
-        error: 'Quick admin access is disabled when production ADMIN_PASSWORD is set. Please sign in with your administrator credentials.',
-      });
-      return;
+    const requestedStudentId = String(req.body?.studentId ?? '').trim();
+
+    if (requestedRole === 'student' && requestedStudentId) {
+      const targetStudent = store.tables.profiles.find(
+        (p) => p.id === requestedStudentId && p.role === 'student' && p.isActive
+      );
+      if (targetStudent) {
+        store.logActivity({
+          userId: targetStudent.id,
+          activityType: 'login',
+          title: 'Entered Student Learning Portal',
+          subject: 'Account',
+        });
+        const token = createSessionToken(targetStudent.id, 'student');
+        res.json({ token, user: sanitizeProfile(targetStudent) });
+        return;
+      }
     }
 
     const profile = getOrCreateSandboxProfile(requestedRole);
@@ -235,7 +298,7 @@ async function startServer() {
       store.logActivity({
         userId: profile.id,
         activityType: 'login',
-        title: 'Entered Student Learning Portal (Local NoSQL Session)',
+        title: 'Entered Student Learning Portal',
         subject: 'Account',
       });
     }
@@ -1158,20 +1221,19 @@ async function startServer() {
   });
 
   app.post('/api/admin/setup', (req, res) => {
-    if (hasConfiguredAdmin()) {
-      res.status(403).json({
-        error: 'Administrator is already configured. Please sign in with your administrator credentials.',
-      });
+    const fullName = String(req.body?.fullName ?? 'Platform Administrator').trim();
+    const email = String(req.body?.email ?? '').trim().toLowerCase();
+
+    if (!email) {
+      const admin = getOrCreateSandboxProfile('admin');
+      const token = createSessionToken(admin.id, 'admin');
+      res.status(200).json({ token, user: sanitizeProfile(admin) });
       return;
     }
 
-    const fullName = String(req.body?.fullName ?? 'Platform Administrator').trim();
-    const email = String(req.body?.email ?? '').trim().toLowerCase();
-    const password = String(req.body?.password ?? '');
-
-    if (!isValidEmail(email) || password.length < 8) {
+    if (!isValidEmail(email)) {
       res.status(400).json({
-        error: 'Valid administrator email and a strong password (minimum 8 characters) are required.',
+        error: 'Please enter a valid administrator email address.',
       });
       return;
     }
@@ -1180,9 +1242,14 @@ async function startServer() {
       (p) => p.email.toLowerCase() === email
     );
     if (existing) {
-      res.status(409).json({
-        error: 'Email is already registered as a student account. Use a dedicated admin email.',
-      });
+      if (existing.role === 'student') {
+        res.status(409).json({
+          error: 'Email is registered as a student account. Use a dedicated admin email.',
+        });
+        return;
+      }
+      const token = createSessionToken(existing.id, 'admin');
+      res.status(200).json({ token, user: sanitizeProfile(existing) });
       return;
     }
 
@@ -1190,7 +1257,7 @@ async function startServer() {
     const adminProfile: StoredProfile = {
       id: generateId(),
       email,
-      passwordHash: hashPassword(password),
+      passwordHash: hashPassword(generateId()),
       fullName: fullName || 'Platform Administrator',
       avatarUrl: '',
       academicLevel: 'Faculty / Administration',
@@ -1214,24 +1281,57 @@ async function startServer() {
   app.post('/api/admin/login', (req, res) => {
     syncEnvironmentAdmin();
     const email = String(req.body?.email ?? '').trim().toLowerCase();
-    const password = String(req.body?.password ?? '');
+    const fullName = String(req.body?.fullName ?? '').trim();
+
+    if (!email) {
+      const admin = getOrCreateSandboxProfile('admin');
+      const token = createSessionToken(admin.id, 'admin');
+      res.json({ token, user: sanitizeProfile(admin) });
+      return;
+    }
+
+    if (!isValidEmail(email)) {
+      res.status(400).json({ error: 'Please enter a valid administrator email.' });
+      return;
+    }
 
     const matchingProfile = store.tables.profiles.find(
       (p) => p.email.toLowerCase() === email
     );
     if (matchingProfile && matchingProfile.role === 'student') {
       res.status(403).json({
-        error: 'This email belongs to a Student account. Please switch to the Student Sign In tab.',
+        error: 'This email belongs to a Student account. Switch to Student Portal instead.',
       });
       return;
     }
 
-    const admin =
+    let admin =
       matchingProfile?.role === 'admin' ? matchingProfile : undefined;
 
-    if (!admin || !verifyPassword(password, admin.passwordHash)) {
-      res.status(401).json({ error: 'Invalid administrator credentials.' });
-      return;
+    if (!admin) {
+      const now = new Date().toISOString();
+      const derivedName =
+        fullName ||
+        email
+          .split('@')[0]
+          .replace(/[._-]+/g, ' ')
+          .replace(/\b\w/g, (ch) => ch.toUpperCase()) ||
+        'Platform Administrator';
+      admin = {
+        id: generateId(),
+        email,
+        passwordHash: hashPassword(generateId()),
+        fullName: derivedName,
+        avatarUrl: '',
+        academicLevel: 'Faculty / Administration',
+        preferredSubjects: [],
+        role: 'admin',
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      };
+      store.tables.profiles.push(admin);
+      store.commit();
     }
 
     const token = createSessionToken(admin.id, 'admin');
@@ -1365,7 +1465,7 @@ async function startServer() {
   app.post('/api/admin/students', requireAdmin, (req, res) => {
     const fullName = String(req.body?.fullName ?? '').trim();
     const email = String(req.body?.email ?? '').trim().toLowerCase();
-    const password = String(req.body?.password ?? '');
+    const rawPassword = String(req.body?.password ?? '').trim();
     const academicLevel =
       String(req.body?.academicLevel ?? '').trim() || 'B.Tech CSE - 5th Semester';
 
@@ -1377,10 +1477,6 @@ async function startServer() {
       res.status(400).json({ error: 'A valid student email address is required.' });
       return;
     }
-    if (password.length < 6) {
-      res.status(400).json({ error: 'Student password must be at least 6 characters.' });
-      return;
-    }
     if (store.tables.profiles.some((p) => p.email.toLowerCase() === email)) {
       res.status(409).json({ error: 'An account with this email already exists.' });
       return;
@@ -1390,7 +1486,7 @@ async function startServer() {
     const student: StoredProfile = {
       id: generateId(),
       email,
-      passwordHash: hashPassword(password),
+      passwordHash: hashPassword(rawPassword || generateId()),
       fullName,
       avatarUrl: '',
       academicLevel,
@@ -1410,7 +1506,7 @@ async function startServer() {
     store.logActivity({
       userId: student.id,
       activityType: 'login',
-      title: 'Student account enrolled by Administrator',
+      title: 'Student profile enrolled by Administrator',
       subject: 'Account',
     });
 
@@ -1502,11 +1598,11 @@ async function startServer() {
   app.post('/api/admin/admins', requireAdmin, (req, res) => {
     const fullName = String(req.body?.fullName ?? '').trim();
     const email = String(req.body?.email ?? '').trim().toLowerCase();
-    const password = String(req.body?.password ?? '');
+    const rawPassword = String(req.body?.password ?? '').trim();
 
-    if (fullName.length < 2 || !isValidEmail(email) || password.length < 8) {
+    if (fullName.length < 2 || !isValidEmail(email)) {
       res.status(400).json({
-        error: 'Administrator name, valid email, and password (minimum 8 characters) are required.',
+        error: 'Administrator name and a valid email address are required.',
       });
       return;
     }
@@ -1519,7 +1615,7 @@ async function startServer() {
     const newAdmin: StoredProfile = {
       id: generateId(),
       email,
-      passwordHash: hashPassword(password),
+      passwordHash: hashPassword(rawPassword || generateId()),
       fullName,
       avatarUrl: '',
       academicLevel: 'Faculty / Administration',
